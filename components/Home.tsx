@@ -17,6 +17,7 @@ import { actOnIntroduction, subscribeToIntroductions } from '@/lib/introductions
 import { formatEvidence, relativeTime, selectAsk, type Ask, type AskContext } from '@/lib/sense';
 import type { GitHubLink, Introduction, Member, PulseEvent, Recipe, Task } from '@/lib/types';
 import { useCohort } from '@/lib/use-cohort';
+import { AskPulse } from './AskPulse';
 import { useRecipes } from '@/lib/use-recipes';
 
 /**
@@ -179,6 +180,16 @@ function HomeView() {
           ready={feedReady}
           uid={uid}
           onError={setError}
+        />
+
+        <AskPulse
+          actor={{
+            uid,
+            name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
+            photoURL: user!.photoURL,
+          }}
+          tasks={tasks}
+          projects={projects}
         />
       </div>
     </>

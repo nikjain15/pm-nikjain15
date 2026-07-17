@@ -121,7 +121,9 @@ test.describe('the receipt you can correct', () => {
     await page.goto('/');
     await page.getByRole('button', { name: /edit the wording/i }).click();
 
-    const editor = page.getByRole('textbox');
+    // Scoped to the receipt: Home now also carries the Ask Pulse input, so an unscoped
+    // textbox lookup is ambiguous. The reword editor lives in the posted-row receipt.
+    const editor = receipt(page).getByRole('textbox');
     // Prefilled: correcting a sentence means editing it, not retyping it.
     await expect(editor).toHaveValue(wrong);
 
