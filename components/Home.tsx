@@ -1125,9 +1125,17 @@ function Kudos({
     'flex min-h-11 shrink-0 items-center gap-1.5 text-xs motion-safe:transition-transform motion-safe:duration-200';
 
   if (own || !onToggle) {
+    // Your own row. You can't kudos yourself — the rules enforce it too — so there is no
+    // control here, only the count others gave you. No heart glyph: a heart you can't
+    // press read as a dead button in prod, where every row was the owner's own. A plain
+    // muted count reads as the receipt it is and explains itself without the tooltip that
+    // phones never saw. Nothing shows until someone gives one — a lone "0" about your own
+    // post would be a scoreboard, and there is no scoreboard here.
+    if (count === 0) return null;
     return (
-      <span className={`${shared} text-zinc-400`} title="Your own — kudos come from other people">
-        {body}
+      <span className={`${shared} text-zinc-500`}>
+        <span className="tabular-nums">{count}</span>
+        <span>kudos</span>
       </span>
     );
   }
