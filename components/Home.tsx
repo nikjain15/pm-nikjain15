@@ -791,6 +791,87 @@ function AskCard({
 
 /* --------------------------------------------------- 3 · the cohort's week */
 
+/**
+ * This week, together — DESIGN-SPEC §6 (v2). The cohort's collective momentum, so Home
+ * leads with shared work rather than a personal to-do list.
+ *
+ * Aggregate by construction, never per-person — the same reasoning as `PulseStrip`: a count
+ * of what the cohort shipped, figured out, and unstuck, from the feed already in memory, so
+ * no new query and no cost. Two of the three measure GENEROSITY (recipes banked, people a
+ * teammate unstuck) because that is the thing worth motivating, and the one thing the rails
+ * forbid is a scoreboard that ranks output per person: nobody is named, no silence is
+ * countable, no bar or tile is ever a person's. A week with nothing in it says so plainly —
+ * an invitation, never invented activity (§6.3).
+ *
+ * v2 note: this reopens §4's motion budget by one beat. The block fades in on mount using
+ * the SAME `pulse-row-in` the feed uses — one shared idiom, behind `prefers-reduced-motion`,
+ * not a new kind of animation.
+ */
+function WeekTogether({ events }: { events: PulseEvent[] }) {
+  const stat = useMemo(() => {
+    // Midnight-aligned like PulseStrip, so "this week" means the same seven days the strip
+    // draws. `new Date()` rather than `Date.now()` — the latter trips react-hooks/purity.
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const weekAgo = midnight.getTime() - 6 * 86_400_000;
+    const shippers = new Set<string>();
+    let shipped = 0;
+    let banked = 0;
+    let unstuck = 0;
+    for (const e of events) {
+      if (e.createdAt.toDate().getTime() < weekAgo) continue;
+      if (e.kind === 'task_shipped') {
+        shipped += 1;
+        shippers.add(e.actorUid);
+      } else if (e.kind === 'recipe_banked') {
+        banked += 1;
+      } else if (e.kind === 'intro_made') {
+        unstuck += 1;
+      }
+    }
+    return { shipped, banked, unstuck, people: shippers.size };
+  }, [events]);
+
+  // A genuinely quiet week is one honest line, not three zeroes dressed as a dashboard.
+  if (stat.shipped === 0 && stat.banked === 0 && stat.unstuck === 0) {
+    return (
+      <p className="pulse-row-in mt-3 text-sm text-zinc-400">
+        Nothing yet this week. The next thing shipped shows up here — live, without anybody
+        typing it in.
+      </p>
+    );
+  }
+
+  const hero =
+    stat.shipped > 0
+      ? `${stat.people} ${stat.people === 1 ? 'person' : 'people'} shipped ${stat.shipped} ${
+          stat.shipped === 1 ? 'thing' : 'things'
+        } this week`
+      : 'The cohort has been building this week';
+
+  return (
+    <div className="pulse-row-in mt-3">
+      <p className="text-sm text-zinc-200">{hero}</p>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <Tile n={stat.shipped} label="things shipped" />
+        <Tile n={stat.banked} label="things the cohort figured out" />
+        <Tile n={stat.unstuck} label="people a teammate unstuck" />
+      </div>
+    </div>
+  );
+}
+
+/** One aggregate tile — a cohort count, never a person's. Zinc, not green: colour on Home
+ * means an action, and a count is not one. */
+function Tile({ n, label }: { n: number; label: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+      <div className="text-xl font-medium tabular-nums text-zinc-100">{n}</div>
+      <div className="mt-0.5 text-xs leading-snug text-zinc-400">{label}</div>
+    </div>
+  );
+}
+
 function CohortWeek({
   events,
   fresh,
@@ -820,6 +901,8 @@ function CohortWeek({
   return (
     <section>
       <h2 className="text-xs text-zinc-400">The cohort&rsquo;s week</h2>
+
+      <WeekTogether events={events} />
 
       <PulseStrip events={events} />
 
