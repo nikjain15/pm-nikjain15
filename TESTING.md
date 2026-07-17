@@ -9,7 +9,16 @@ Companion: [DESIGN-SPEC.md](DESIGN-SPEC.md) · [CHECKLIST.md](CHECKLIST.md) (def
 
 ## 0. Read this before you believe a red suite
 
-**Restart the emulator before a full e2e run, and again before you diagnose anything.**
+**`npm run test:e2e` now brings its own fresh emulator** — it wraps the full suite in
+`emulators:exec`, so every run starts from an empty database and tears the emulator down
+after. That is the fix for the flake below: a fresh members collection keeps the snapshot
+fan-out under the collapse threshold for the whole run. Just have a dev server available
+(Playwright starts `npm run dev:emulator` for you, or reuses one you already have) — no
+hand-started `npm run emulator` needed, and nothing to remember to restart.
+
+The fast iterative loop is still there: `npm run test:e2e:managed` runs against whatever
+emulator + dev server you already have up, for quick single-spec reruns. It's the one that
+degrades — so if IT goes red, restart the emulator first (below) before believing it.
 
 ```bash
 pkill -f cloud-firestore-emulator; pkill -f emulators:start
@@ -17,7 +26,7 @@ export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
 npm run emulator
 ```
 
-Cost us an hour on 2026-07-17. Both new tests failed *with the fix in place*, and sign-up hung on
+This cost us an hour on 2026-07-17. Both new tests failed *with the fix in place*, and sign-up hung on
 "Working…" forever. Every probe came back clean — auth returned real tokens, the rules allowed member
 creation, Firestore REST answered 200 — because **REST keeps working while the SDK is dead**. The
 emulator's own log had it:

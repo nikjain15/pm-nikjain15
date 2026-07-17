@@ -55,6 +55,22 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
+  // Only for local (full) runs — the smoke suite targets the deployed URL and must never
+  // start a server. `reuseExistingServer` keeps the fast iterative loop working: if you
+  // already have `npm run dev:emulator` up, Playwright reuses it; otherwise (e.g. the
+  // self-contained `npm run test:e2e`, which wraps this in a fresh `emulators:exec`) it
+  // starts one. The emulator that server talks to is whatever holds :8080 at request time
+  // — the fresh, disposable one `emulators:exec` provides, which is the whole fix for the
+  // WebChannel-collapse flake (TESTING.md §0): every full run starts from an empty members
+  // collection, so the snapshot fan-out never grows past the collapse threshold.
+  webServer: isLocal
+    ? {
+        command: 'npm run dev:emulator',
+        url: BASE_URL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      }
+    : undefined,
   projects: [
     {
       name: 'smoke',
