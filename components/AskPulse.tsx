@@ -125,6 +125,28 @@ export function AskPulse({
         <p className="mt-2 text-xs text-zinc-500">Loading your board…</p>
       )}
 
+      {/* Starters that pre-fill a working prompt — they guide toward what the agent can
+          actually do, rather than promise advice it doesn't give yet. */}
+      {ready && phase === 'idle' && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(
+            [
+              ['add a task', 'add a task to '],
+              ['start a project', 'start a project called '],
+              ['move a card', 'move '],
+            ] as const
+          ).map(([label, prefill]) => (
+            <button
+              key={label}
+              onClick={() => setText(prefill)}
+              className="rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-300"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Thinking — a visible, moving indicator, not a faint line. The model call is a couple
           of seconds; the user should see Pulse working, never a dead input. */}
       {phase === 'planning' && (

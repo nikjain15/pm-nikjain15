@@ -136,6 +136,10 @@ function HomeView() {
 
         <ErrorNote>{error}</ErrorNote>
 
+        {/* Pulse speaks first — the AI-first top of the page. It says what it did and where
+            the cohort stands (the gamified momentum), before any board or feed. */}
+        <PulseBrief events={events} uid={uid} />
+
         {posted ? (
           <PostedRow event={posted} onError={setError} />
         ) : linkReady && link === null ? (
@@ -173,16 +177,8 @@ function HomeView() {
           ask.kind === 'nothing'
         ) && <StandingAsk ask={ask} uid={uid} ready={ready} intro={helperIntro} onError={setError} />}
 
-        <CohortWeek
-          events={events}
-          fresh={fresh}
-          members={members}
-          recipes={recipes}
-          ready={feedReady}
-          uid={uid}
-          onError={setError}
-        />
-
+        {/* The interface, up front — in an AI-first home you tell Pulse what to do; the
+            board and feed below are the record, not the control panel. */}
         <AskPulse
           actor={{
             uid,
@@ -194,6 +190,16 @@ function HomeView() {
           members={members}
           ready={ready}
           canPublish={link?.agentPublishOptIn === true}
+        />
+
+        <CohortWeek
+          events={events}
+          fresh={fresh}
+          members={members}
+          recipes={recipes}
+          ready={feedReady}
+          uid={uid}
+          onError={setError}
         />
       </div>
     </>
@@ -822,135 +828,91 @@ function AskCard({
  * the SAME `pulse-row-in` the feed uses — one shared idiom, behind `prefers-reduced-motion`,
  * not a new kind of animation.
  */
-function WeekTogether({ events }: { events: PulseEvent[] }) {
-  const stat = useMemo(() => {
-    // Midnight-aligned like PulseStrip, so "this week" means the same seven days the strip
-    // draws. `new Date()` rather than `Date.now()` — the latter trips react-hooks/purity.
+function PulseBrief({ events, uid }: { events: PulseEvent[]; uid: string }) {
+  const s = useMemo(() => {
     const midnight = new Date();
     midnight.setHours(0, 0, 0, 0);
     const weekAgo = midnight.getTime() - 6 * 86_400_000;
-    const shippers = new Set<string>();
-    let shipped = 0;
+    const shipDays = new Set<number>();
+    let cohortShipped = 0;
     let banked = 0;
-    let unstuck = 0;
+    let cohortUnstuck = 0;
+    let youShipped = 0;
+    let youUnstuck = 0;
+    let youKudos = 0;
     for (const e of events) {
-      if (e.createdAt.toDate().getTime() < weekAgo) continue;
+      const ms = e.createdAt.toDate().getTime();
+      const recent = ms >= weekAgo;
       if (e.kind === 'task_shipped') {
-        shipped += 1;
-        shippers.add(e.actorUid);
-      } else if (e.kind === 'recipe_banked') {
+        if (recent) cohortShipped += 1;
+        const at = e.createdAt.toDate();
+        at.setHours(0, 0, 0, 0);
+        const d = Math.round((midnight.getTime() - at.getTime()) / 86_400_000);
+        if (d >= 0 && d <= 30) shipDays.add(d);
+      } else if (e.kind === 'recipe_banked' && recent) {
         banked += 1;
-      } else if (e.kind === 'intro_made') {
-        unstuck += 1;
+      } else if (e.kind === 'intro_made' && recent) {
+        cohortUnstuck += 1;
+      }
+      if (e.actorUid === uid) {
+        if (e.kind === 'task_shipped') youShipped += 1;
+        else if (e.kind === 'intro_made') youUnstuck += 1;
+        youKudos += e.kudos.length;
       }
     }
-    return { shipped, banked, unstuck, people: shippers.size };
-  }, [events]);
-
-  // The cohort's ship streak — consecutive days ending now that had a ship. Collective by
-  // construction (a day is the cohort's, never a person's), so it can motivate without
-  // singling anyone out or shaming a quiet day. Read from the same in-memory feed.
-  const streak = useMemo(() => {
-    const midnight = new Date();
-    midnight.setHours(0, 0, 0, 0);
-    const shipDays = new Set<number>();
-    for (const e of events) {
-      if (e.kind !== 'task_shipped') continue;
-      const at = e.createdAt.toDate();
-      at.setHours(0, 0, 0, 0);
-      const daysAgo = Math.round((midnight.getTime() - at.getTime()) / 86_400_000);
-      if (daysAgo >= 0 && daysAgo <= 30) shipDays.add(daysAgo);
-    }
     const todayShipped = shipDays.has(0);
-    let n = 0;
-    for (let d = todayShipped ? 0 : 1; shipDays.has(d); d++) n += 1;
-    return { n, todayShipped };
-  }, [events]);
-
-  // A genuinely quiet week is one honest line, not three zeroes dressed as a dashboard.
-  if (stat.shipped === 0 && stat.banked === 0 && stat.unstuck === 0) {
-    return (
-      <p className="pulse-row-in mt-3 text-sm text-zinc-400">
-        Nothing yet this week. The next thing shipped shows up here — live, without anybody
-        typing it in.
-      </p>
-    );
-  }
-
-  const hero =
-    stat.shipped > 0
-      ? `${stat.people} ${stat.people === 1 ? 'person' : 'people'} shipped ${stat.shipped} ${
-          stat.shipped === 1 ? 'thing' : 'things'
-        } this week`
-      : 'The cohort has been building this week';
-
-  return (
-    <div className="pulse-row-in mt-3">
-      {streak.n >= 2 && (
-        <p className="text-sm text-emerald-400">
-          The cohort shipped {streak.n} days straight
-          {!streak.todayShipped && <span className="text-zinc-400"> · keep it alive today</span>}
-        </p>
-      )}
-      <p className={`text-base font-medium text-zinc-100 ${streak.n >= 2 ? 'mt-1' : ''}`}>{hero}</p>
-      {/* Only tiles with something to show — a wall of zeroes reads as "quiet", the opposite
-          of the momentum this is meant to carry. */}
-      <div className="mt-2 flex flex-wrap gap-2">
-        {stat.shipped > 0 && <Tile n={stat.shipped} label="things shipped" />}
-        {stat.banked > 0 && <Tile n={stat.banked} label="things the cohort figured out" />}
-        {stat.unstuck > 0 && <Tile n={stat.unstuck} label="people a teammate unstuck" />}
-      </div>
-    </div>
-  );
-}
-
-/** One aggregate tile — a cohort count, never a person's. Zinc, not green: colour on Home
- * means an action, and a count is not one. */
-function Tile({ n, label }: { n: number; label: string }) {
-  return (
-    <div className="min-w-[8rem] flex-1 rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div className="text-xl font-medium tabular-nums text-zinc-100">{n}</div>
-      <div className="mt-0.5 text-xs leading-snug text-zinc-400">{label}</div>
-    </div>
-  );
-}
-
-/**
- * Your part — YOUR own progress, shown only to you. Never a rank, never compared: the label
- * literally says "only you see this", and a peer's numbers are never on screen. This is the
- * one place personal numbers are allowed precisely because they are private and about
- * contribution, not standing — "you unstuck 2 people" motivates generosity, the value the
- * product rewards. Read from the in-memory feed like everything else; nothing until you've
- * done something, so it never nags an empty account.
- */
-function YourPart({ events, uid }: { events: PulseEvent[]; uid: string }) {
-  const stat = useMemo(() => {
-    let shipped = 0;
-    let unstuck = 0;
-    let kudos = 0;
-    for (const e of events) {
-      if (e.actorUid !== uid) continue;
-      if (e.kind === 'task_shipped') shipped += 1;
-      else if (e.kind === 'intro_made') unstuck += 1;
-      kudos += e.kudos.length;
-    }
-    return { shipped, unstuck, kudos };
+    let streak = 0;
+    for (let d = todayShipped ? 0 : 1; shipDays.has(d); d++) streak += 1;
+    return { cohortShipped, banked, cohortUnstuck, youShipped, youUnstuck, youKudos, streak };
   }, [events, uid]);
 
-  if (stat.shipped === 0 && stat.unstuck === 0 && stat.kudos === 0) return null;
+  // Nothing has happened yet — the brief stays quiet rather than narrate an empty week.
+  if (s.cohortShipped === 0 && s.banked === 0 && s.cohortUnstuck === 0 && s.youShipped === 0) {
+    return null;
+  }
 
-  // One quiet line, not a second grid of tiles — your part is personal and secondary, so it
-  // shouldn't weigh as much as the cohort's. Only-you, never a rank.
-  const parts = [
-    stat.shipped > 0 && `shipped ${stat.shipped}`,
-    stat.unstuck > 0 && `unstuck ${stat.unstuck}`,
-    stat.kudos > 0 && `${stat.kudos} kudos`,
+  // Pulse's own voice, leading with what it did for you.
+  const lead =
+    s.youShipped > 0
+      ? "I moved your work to done and told the team — you didn't type a thing."
+      : 'The cohort is building. Here is where things stand.';
+
+  const cohortBits = [
+    `shipped ${s.cohortShipped}`,
+    s.banked > 0 && `figured out ${s.banked}`,
+    s.cohortUnstuck > 0 && `unstuck ${s.cohortUnstuck}`,
+  ].filter(Boolean);
+
+  const yours = [
+    s.youShipped > 0 && `shipped ${s.youShipped}`,
+    s.youUnstuck > 0 && `unstuck ${s.youUnstuck}`,
+    s.youKudos > 0 && `${s.youKudos} kudos`,
   ].filter(Boolean);
 
   return (
-    <p className="pulse-row-in mt-3 text-xs text-zinc-400">
-      your part <span className="text-zinc-500">· only you see this</span> — {parts.join(' · ')}
-    </p>
+    <div className="pulse-row-in mb-6">
+      <div className="mb-2 flex items-center gap-2">
+        <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-400" />
+        <span className="text-xs text-zinc-400">Pulse &middot; caught you up</span>
+      </div>
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <p className="text-base font-medium text-zinc-100">{lead}</p>
+        <p className="mt-1.5 text-sm text-zinc-300">
+          {/* The gamified beat — a shared streak, collective and generosity-first, never a
+              per-person rank. */}
+          {s.streak >= 2 && (
+            <span className="text-emerald-400">On a {s.streak}-day shipping streak. </span>
+          )}
+          The cohort {cohortBits.join(' · ')} this week.
+        </p>
+        {yours.length > 0 && (
+          <p className="mt-1 text-xs text-zinc-400">
+            your part <span className="text-zinc-500">&middot; only you see this</span> —{' '}
+            {yours.join(' · ')}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -983,10 +945,6 @@ function CohortWeek({
   return (
     <section>
       <h2 className="text-xs text-zinc-400">The cohort&rsquo;s week</h2>
-
-      <WeekTogether events={events} />
-
-      <YourPart events={events} uid={uid} />
 
       <PulseStrip events={events} />
 
