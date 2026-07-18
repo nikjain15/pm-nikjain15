@@ -23,7 +23,9 @@ Rules:
 - To CREATE a task, it must be filed under a project. If a fitting project already exists in the context, use it. If NONE fits, create the project first (create_project) and then create the task under that same name — BOTH calls in this one plan. Never leave a new task with no project.
 - If the user names several tasks, create all of them.
 - If the user is vague and names no concrete task, card, or project (e.g. "help me", "do stuff"), do nothing — do not invent work.
-- Emit only tool calls, no prose.`;
+- Emit only tool calls, no prose.
+
+Example — the user says "make a task to write the docs" and the board has NO projects: emit TWO calls — create_project(name: "Docs"), then create_task(title: "Write the docs", project: "Docs"). Creating the project alone is not enough; the task must be created too.`;
 
 function renderContext(ctx: BoardContext): string {
   const tasks = ctx.tasks.length

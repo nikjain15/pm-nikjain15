@@ -53,12 +53,13 @@ export const STATUSES: readonly Status[] = ['todo', 'in_progress', 'done'];
 export const AGENT_TOOLS = [
   {
     name: 'create_task',
-    description: "Create a task on the user's own board. Use an existing project by name.",
+    description:
+      "Create a task on the user's own board, filed under a project. The project can be one already on the board, OR one you create with create_project earlier in the same response.",
     input_schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Short task title, plain words.' },
-        project: { type: 'string', description: 'Name of an existing project to file it under.' },
+        project: { type: 'string', description: 'Project name — an existing one, or one you create in this same response.' },
         status: { type: 'string', enum: ['todo', 'in_progress', 'done'] },
         due_date: { type: 'string', description: 'ISO date (YYYY-MM-DD) or empty.' },
       },
