@@ -88,6 +88,13 @@ const MOTION_CSS = `
 
 /* ----------------------------------------------------------------------- view */
 
+/** The small category label above each update card, so its kind is obvious at a glance. */
+function CardLabel({ children }: { children: string }) {
+  return (
+    <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">{children}</p>
+  );
+}
+
 function HomeView() {
   const { user, memberName } = useAuth();
   const uid = user!.uid;
@@ -203,17 +210,29 @@ function HomeView() {
             />
           </div>
 
-          {/* Updates — structured together with even spacing. */}
-          <div className="home-updates space-y-4">
+          {/* Updates — each card gets a small category label above it, so at a glance you
+              know what kind of thing it is (a connection, a receipt, your next move…). */}
+          <div className="home-updates space-y-6">
             {/* The one collaborative nudge — public facts only, your own Home, at most one. */}
-            {connection && <SpottedConnection connection={connection} members={members} />}
+            {connection && (
+              <div>
+                <CardLabel>collaboration</CardLabel>
+                <SpottedConnection connection={connection} members={members} />
+              </div>
+            )}
 
             {posted ? (
-              <PostedRow event={posted} onError={setError} />
+              <div>
+                <CardLabel>your receipt</CardLabel>
+                <PostedRow event={posted} onError={setError} />
+              </div>
             ) : linkReady && link === null ? (
               // Never chose at /connect — wandered off mid-decision. One open question, asked
               // once; answering it (either way) makes this card gone for good.
-              <DecideCard uid={uid} onError={setError} />
+              <div>
+                <CardLabel>one decision</CardLabel>
+                <DecideCard uid={uid} onError={setError} />
+              </div>
             ) : (
               // Only the person who declined gets told there's nothing of theirs — everyone
               // else's silence is nobody's business, including their own dashboard's.
@@ -221,18 +240,21 @@ function HomeView() {
             )}
 
             {offer && (
-              <RecipeOfferCard
-                actor={{
-                  uid,
-                  // Member doc, not the User: the rules reject a mismatched actorName, and the
-                  // old `?? ''` fallback could even publish a nameless recipe. See auth-context.
-                  name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
-                  photoURL: user!.photoURL,
-                }}
-                offer={offer}
-                members={members}
-                onGone={() => setOfferGone(true)}
-              />
+              <div>
+                <CardLabel>keep what worked</CardLabel>
+                <RecipeOfferCard
+                  actor={{
+                    uid,
+                    // Member doc, not the User: the rules reject a mismatched actorName, and the
+                    // old `?? ''` fallback could even publish a nameless recipe. See auth-context.
+                    name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
+                    photoURL: user!.photoURL,
+                  }}
+                  offer={offer}
+                  members={members}
+                  onGone={() => setOfferGone(true)}
+                />
+              </div>
             )}
 
             {/* One card, not two stacked negations: when an invitation above is showing and
@@ -243,7 +265,12 @@ function HomeView() {
               linkReady &&
               (link === null || link?.status === 'declined') &&
               ask.kind === 'nothing'
-            ) && <StandingAsk ask={ask} uid={uid} ready={ready} intro={helperIntro} onError={setError} />}
+            ) && (
+              <div>
+                <CardLabel>your next move</CardLabel>
+                <StandingAsk ask={ask} uid={uid} ready={ready} intro={helperIntro} onError={setError} />
+              </div>
+            )}
           </div>
 
           {/* The cohort's week — recedes at the bottom of the content column. */}
