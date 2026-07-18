@@ -892,11 +892,13 @@ function WeekTogether({ events }: { events: PulseEvent[] }) {
           {!streak.todayShipped && <span className="text-zinc-400"> · keep it alive today</span>}
         </p>
       )}
-      <p className={`text-sm text-zinc-200 ${streak.n >= 2 ? 'mt-1' : ''}`}>{hero}</p>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        <Tile n={stat.shipped} label="things shipped" />
-        <Tile n={stat.banked} label="things the cohort figured out" />
-        <Tile n={stat.unstuck} label="people a teammate unstuck" />
+      <p className={`text-base font-medium text-zinc-100 ${streak.n >= 2 ? 'mt-1' : ''}`}>{hero}</p>
+      {/* Only tiles with something to show — a wall of zeroes reads as "quiet", the opposite
+          of the momentum this is meant to carry. */}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {stat.shipped > 0 && <Tile n={stat.shipped} label="things shipped" />}
+        {stat.banked > 0 && <Tile n={stat.banked} label="things the cohort figured out" />}
+        {stat.unstuck > 0 && <Tile n={stat.unstuck} label="people a teammate unstuck" />}
       </div>
     </div>
   );
@@ -906,7 +908,7 @@ function WeekTogether({ events }: { events: PulseEvent[] }) {
  * means an action, and a count is not one. */
 function Tile({ n, label }: { n: number; label: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+    <div className="min-w-[8rem] flex-1 rounded-lg border border-zinc-800 bg-zinc-900 p-3">
       <div className="text-xl font-medium tabular-nums text-zinc-100">{n}</div>
       <div className="mt-0.5 text-xs leading-snug text-zinc-400">{label}</div>
     </div>

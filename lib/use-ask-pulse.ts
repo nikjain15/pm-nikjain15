@@ -76,15 +76,18 @@ export function useAskPulse({
           setNote("Pulse can't plan right now. The board still works by hand.");
           return;
         }
-        const data = (await res.json()) as { actions: AgentAction[]; reason?: string };
+        const data = (await res.json()) as { actions: AgentAction[]; reason?: string; dropped?: string[] };
         actions = data.actions ?? [];
         if (actions.length === 0) {
           setPhase('degraded');
-          setNote(
-            data.reason
-              ? "Pulse can't plan right now. The board still works by hand."
-              : 'Nothing to do there. Try naming a task or a project on your board.'
-          );
+          if (data.reason) {
+            setNote("Pulse can't plan right now. The board still works by hand.");
+          } else if (data.dropped && data.dropped.length > 0) {
+            // Say what it couldn't do, in the reason's own words, then how to fix it.
+            setNote(`I couldn't do that — ${data.dropped[0]}. Try being specific, like “add a task to fix the login bug”.`);
+          } else {
+            setNote('Tell me what to do in plain words — like “add a task to fix the login bug”, “move the login card to done”, or “start a project called Marketing”.');
+          }
           return;
         }
       } catch {
