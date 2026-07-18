@@ -77,6 +77,15 @@ service cloud.firestore {
       allow read, write: if isSelf(uid);
     }
 
+    // --- briefs --------------------------------------------------------------
+    // A per-member cache of the model-written Home brief (lib/use-brief.ts), keyed by uid.
+    // The brief is self-narration — the reader's own week and the cohort's collective
+    // momentum — so it is nobody else's to read or write. Same shape as githubLinks: yours
+    // alone. Purely a cache; losing it costs one regeneration, never correctness.
+    match /briefs/{uid} {
+      allow read, write: if isSelf(uid);
+    }
+
     // --- projects ------------------------------------------------------------
     // Anyone signed in can create and edit projects (shared cohort work).
     // ownerUid is set at creation and cannot be reassigned afterwards.

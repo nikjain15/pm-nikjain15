@@ -943,3 +943,38 @@ describe('optOuts — the exit has no signup wall, and no way back in', () => {
     await assertFails(updateDoc(doc(as(env, ALICE), 'optOuts/somebody'), { handle: 'other' }));
   });
 });
+
+/* ==========================================================================
+ * briefs — a per-member cache of the model-written Home brief.
+ *
+ * The brief is self-narration: the reader's own week plus the cohort's
+ * collective momentum. It is nobody else's to read or write. Same promise as
+ * githubLinks — yours alone — so a peer can neither read your brief nor forge
+ * one under your uid.
+ * ========================================================================== */
+describe('briefs — your Home brief is yours alone', () => {
+  const path = `briefs/${ALICE}`;
+
+  it('lets you read and write your own brief', async () => {
+    await assertSucceeds(
+      setDoc(doc(as(env, ALICE), path), { week: '2026-W29', hash: 'abc', text: 'hi', updatedAt: new Date() })
+    );
+    await assertSucceeds(getDoc(doc(as(env, ALICE), path)));
+  });
+
+  it('denies a peer reading your brief', async () => {
+    await seed(env, path, { week: '2026-W29', hash: 'abc', text: 'private', updatedAt: new Date() });
+    await assertFails(getDoc(doc(as(env, BOB), path)));
+  });
+
+  it('denies a peer writing a brief under your uid', async () => {
+    await assertFails(
+      setDoc(doc(as(env, BOB), path), { week: '2026-W29', hash: 'x', text: 'forged', updatedAt: new Date() })
+    );
+  });
+
+  it('denies an anonymous read', async () => {
+    await seed(env, path, { week: '2026-W29', hash: 'abc', text: 'private', updatedAt: new Date() });
+    await assertFails(getDoc(doc(asAnon(env), path)));
+  });
+});
