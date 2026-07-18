@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { AGENT_TOOLS, validatePlan, type AgentAction, type BoardContext, type RawToolCall } from './agent';
+import { agentTools, validatePlan, type AgentAction, type BoardContext, type RawToolCall } from './agent';
 
 /**
  * "Ask Pulse" — the server-side planning call. **Server-only**: reads ANTHROPIC_API_KEY,
@@ -51,7 +51,7 @@ export async function planActions(utterance: string, ctx: BoardContext): Promise
       model: MODEL,
       max_tokens: 1024,
       system: SYSTEM,
-      tools: AGENT_TOOLS as unknown as Anthropic.Tool[],
+      tools: agentTools(ctx.canPublish) as unknown as Anthropic.Tool[],
       output_config: { effort: 'low' },
       messages: [
         {

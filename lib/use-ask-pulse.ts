@@ -33,7 +33,21 @@ export type Phase = 'idle' | 'planning' | 'running' | 'done' | 'degraded';
 const dueFrom = (iso: string | null): Timestamp | null =>
   iso ? Timestamp.fromDate(new Date(`${iso}T00:00:00`)) : null;
 
-export function useAskPulse({ actor, tasks, projects }: { actor: Actor; tasks: Task[]; projects: Project[] }) {
+export function useAskPulse({
+  actor,
+  tasks,
+  projects,
+  canPublish = false,
+  onDraftRecipe,
+}: {
+  actor: Actor;
+  tasks: Task[];
+  projects: Project[];
+  /** Whether the user opted the agent into publishing — gates the draft_recipe tool. */
+  canPublish?: boolean;
+  /** Called when the agent proposes drafting a recipe; the caller opens the recipe modal. */
+  onDraftRecipe?: (taskId: string, title: string) => void;
+}) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [steps, setSteps] = useState<Step[]>([]);
   const [note, setNote] = useState<string | null>(null);
@@ -55,7 +69,7 @@ export function useAskPulse({ actor, tasks, projects }: { actor: Actor; tasks: T
         const res = await fetch('/api/ask-pulse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ utterance, context: boardContext(actor.uid, tasks, projects) }),
+          body: JSON.stringify({ utterance, context: boardContext(actor.uid, tasks, projects, canPublish) }),
         });
         if (!res.ok) {
           setPhase('degraded');
@@ -185,7 +199,7 @@ export function useAskPulse({ actor, tasks, projects }: { actor: Actor; tasks: T
               // The project came from the board unarchived, so undo restores that and the name.
               undo: async () => void (await updateProject(action.projectId, { name: priorName, archived: false })),
             });
-          } else {
+          } else if (action.kind === 'mark_stuck') {
             const task = tasks.find((t) => t.id === action.taskId);
             if (!task) continue;
             const prior = !!task.stuckSince;
@@ -201,6 +215,11 @@ export function useAskPulse({ actor, tasks, projects }: { actor: Actor; tasks: T
               state: 'done',
               undo: async () => void (await setTaskStuck(action.taskId, prior)),
             });
+          } else {
+            // draft_recipe — the one action that does NOT write. It hands off to the recipe
+            // modal, where the user edits the draft and confirms behind the peer-name gate.
+            add({ label: `Drafting a recipe from ${action.title}`, detail: 'edit it, then bank it', state: 'done', undo: null });
+            onDraftRecipe?.(action.taskId, action.title);
           }
         } catch {
           add({ label: 'One step could not be applied', detail: 'nothing changed for it', state: 'done', undo: null });
@@ -209,7 +228,7 @@ export function useAskPulse({ actor, tasks, projects }: { actor: Actor; tasks: T
 
       setPhase('done');
     },
-    [actor, tasks, projects]
+    [actor, tasks, projects, canPublish, onDraftRecipe]
   );
 
   const undoStep = useCallback(

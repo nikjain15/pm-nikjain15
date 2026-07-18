@@ -28,7 +28,12 @@ export type AgentAction =
   | { kind: 'edit_project'; projectId: string; name: string; newName: string | null; archive: boolean }
   // The assignee's own "I'm stuck" — on or off. Only ever the user's OWN task (the rules
   // enforce it too: declaring a PEER stuck is exactly the claim the product refuses).
-  | { kind: 'mark_stuck'; taskId: string; title: string; stuck: boolean };
+  | { kind: 'mark_stuck'; taskId: string; title: string; stuck: boolean }
+  // The ONE publish action: draft a recipe from the user's own SHIPPED task. It does not
+  // write anything on its own — it opens the recipe draft for the user to edit and confirm,
+  // behind the peer-name gate. Gated twice: the tool is only offered when the user opted in
+  // (canPublish), and validatePlan drops it otherwise.
+  | { kind: 'draft_recipe'; taskId: string; title: string };
 
 /** What the model may reference — the user's OWN board, nothing else. Built server-side from
  * the caller's own tasks/projects so the model can resolve "the login task" to a real id it
@@ -37,6 +42,8 @@ export type BoardContext = {
   uid: string;
   tasks: { id: string; title: string; status: Status; mine: boolean }[];
   projects: { id: string; name: string }[];
+  /** Whether the user opted the agent into publishing (drafting recipes). Default false. */
+  canPublish: boolean;
 };
 
 export const STATUSES: readonly Status[] = ['todo', 'in_progress', 'done'];
@@ -127,6 +134,24 @@ export const AGENT_TOOLS = [
     },
   },
 ] as const;
+
+/** The one publish tool. Offered to the model ONLY when the user opted in (`canPublish`);
+ * validatePlan drops it otherwise, so it can never fire from a plan the user didn't enable. */
+export const DRAFT_RECIPE_TOOL = {
+  name: 'draft_recipe',
+  description:
+    "Draft a recipe from one of the user's own SHIPPED (done) tasks so teammates who hit the same thing can steal it. This does NOT post anything — the user edits the draft and confirms.",
+  input_schema: {
+    type: 'object',
+    properties: { task: { type: 'string', description: 'The exact title of a done task of the user.' } },
+    required: ['task'],
+  },
+} as const;
+
+/** The tools handed to the model — the publish tool appears only for an opted-in user. */
+export function agentTools(canPublish: boolean) {
+  return canPublish ? [...AGENT_TOOLS, DRAFT_RECIPE_TOOL] : AGENT_TOOLS;
+}
 
 /** A raw tool call as the model emits it — untrusted until validated. */
 export type RawToolCall = { name: string; input: Record<string, unknown> };
@@ -285,6 +310,26 @@ export function validatePlan(
       continue;
     }
 
+    if (call.name === 'draft_recipe') {
+      if (!ctx.canPublish) {
+        // Defence in depth: the tool isn't even offered when publishing is off, but if a
+        // stale client or an injection conjures the call, it dies here.
+        dropped.push('a recipe draft, but publishing to the cohort is off in Settings');
+        continue;
+      }
+      const task = taskByTitle.get(typeof input.task === 'string' ? input.task.trim().toLowerCase() : '');
+      if (!task) {
+        dropped.push(`a recipe draft for a task that isn't yours ("${input.task ?? ''}")`);
+        continue;
+      }
+      if (task.status !== 'done') {
+        dropped.push(`a recipe draft for a task that isn't shipped yet ("${task.title}")`);
+        continue;
+      }
+      actions.push({ kind: 'draft_recipe', taskId: task.id, title: task.title });
+      continue;
+    }
+
     dropped.push(`an unknown action ("${call.name}")`);
   }
 
@@ -293,12 +338,18 @@ export function validatePlan(
 
 /** Build the model's view of the board from the full cohort lists — the user's OWN items
  * only, titles and ids, no peers and no timestamps (never an absence signal, §2.5). */
-export function boardContext(uid: string, tasks: Task[], projects: Project[]): BoardContext {
+export function boardContext(
+  uid: string,
+  tasks: Task[],
+  projects: Project[],
+  canPublish = false
+): BoardContext {
   return {
     uid,
     tasks: tasks
       .filter((t) => t.creatorUid === uid || t.assigneeUid === uid)
       .map((t) => ({ id: t.id, title: t.title, status: t.status, mine: true })),
     projects: projects.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name })),
+    canPublish,
   };
 }

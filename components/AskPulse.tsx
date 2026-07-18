@@ -1,10 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAskPulse } from '@/lib/use-ask-pulse';
-import type { Project, Task } from '@/lib/types';
+import type { ExtractionResult } from '@/app/api/extract-recipe/route';
+import { RecipeModal, type RecipeDraft } from '@/components/RecipeModal';
+import type { Member, Project, Task } from '@/lib/types';
 
 type Actor = { uid: string; name: string; photoURL: string | null };
+
+const THIN_NOTE = 'Not enough in the evidence to draft from. Tell it in your words.';
 
 /**
  * "Ask Pulse" — type an instruction, watch it happen. design-agent.md.
@@ -14,9 +18,70 @@ type Actor = { uid: string; name: string; photoURL: string | null };
  * cohort (banking a recipe) is not in this slice and will pause when it lands. The input is
  * the only affordance; a tool nobody typed into does nothing, so it never nags.
  */
-export function AskPulse({ actor, tasks, projects, ready }: { actor: Actor; tasks: Task[]; projects: Project[]; ready: boolean }) {
-  const { phase, steps, note, run, undoStep, reset } = useAskPulse({ actor, tasks, projects });
+export function AskPulse({
+  actor,
+  tasks,
+  projects,
+  members,
+  ready,
+  canPublish,
+}: {
+  actor: Actor;
+  tasks: Task[];
+  projects: Project[];
+  members: Member[];
+  ready: boolean;
+  canPublish: boolean;
+}) {
+  const [pendingRecipe, setPendingRecipe] = useState<{ taskId: string; title: string } | null>(null);
+  const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null);
+  const { phase, steps, note, run, undoStep, reset } = useAskPulse({
+    actor,
+    tasks,
+    projects,
+    canPublish,
+    onDraftRecipe: (taskId, title) => setPendingRecipe({ taskId, title }),
+  });
   const [text, setText] = useState('');
+
+  // When the agent proposes a recipe, fetch a draft from the shipped task's PR (same path as
+  // the recipe offer), then open the modal. Any failure lands on an empty draft with a calm
+  // note — the modal still works. The peer-name gate + require-one-edit live in the modal.
+  useEffect(() => {
+    if (!pendingRecipe) return;
+    let cancelled = false;
+    const task = tasks.find((t) => t.id === pendingRecipe.taskId);
+    const prNumber = task?.evidence?.prNumbers?.[0] ?? null;
+    (async () => {
+      let result: ExtractionResult | null = null;
+      if (prNumber !== null) {
+        try {
+          const res = await fetch('/api/extract-recipe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prNumber, prTitle: pendingRecipe.title }),
+          });
+          if (res.ok) result = (await res.json()) as ExtractionResult;
+        } catch {
+          result = null;
+        }
+      }
+      if (cancelled) return;
+      setRecipeDraft(
+        result && !result.thin
+          ? { problem: result.problem, body: result.body, taskId: pendingRecipe.taskId }
+          : { problem: '', body: '', taskId: pendingRecipe.taskId, note: THIN_NOTE }
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingRecipe, tasks]);
+
+  const closeRecipe = () => {
+    setRecipeDraft(null);
+    setPendingRecipe(null);
+  };
 
   // Not until the board has loaded: acting on a board Pulse hasn't read yet would move or
   // miss cards silently. `ready` is the cohort listener's first snapshot.
@@ -31,6 +96,7 @@ export function AskPulse({ actor, tasks, projects, ready }: { actor: Actor; task
   };
 
   return (
+    <>
     <section className="mt-8">
       <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
         <span aria-hidden className="text-sm text-zinc-500">
@@ -104,5 +170,17 @@ export function AskPulse({ actor, tasks, projects, ready }: { actor: Actor; task
 
       {phase === 'degraded' && note && <p className="pulse-row-in mt-3 text-sm text-zinc-400">{note}</p>}
     </section>
+
+    {recipeDraft && (
+      <RecipeModal
+        actor={actor}
+        draft={recipeDraft}
+        members={members}
+        requireEdit
+        onClose={closeRecipe}
+        onCreated={closeRecipe}
+      />
+    )}
+    </>
   );
 }

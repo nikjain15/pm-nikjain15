@@ -191,7 +191,9 @@ function HomeView() {
           }}
           tasks={tasks}
           projects={projects}
+          members={members}
           ready={ready}
+          canPublish={link?.agentPublishOptIn === true}
         />
       </div>
     </>

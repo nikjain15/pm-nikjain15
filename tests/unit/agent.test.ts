@@ -7,8 +7,10 @@ const ctx: BoardContext = {
   tasks: [
     { id: 't_login', title: 'Login screen', status: 'in_progress', mine: true },
     { id: 't_cors', title: 'Fix CORS', status: 'todo', mine: true },
+    { id: 't_ship', title: 'Shipped thing', status: 'done', mine: true },
   ],
   projects: [{ id: 'p_web', name: 'Website' }],
+  canPublish: false,
 };
 
 describe('validatePlan — the injection backstop', () => {
@@ -119,6 +121,29 @@ describe('validatePlan — the extended own-board actions', () => {
       { kind: 'mark_stuck', taskId: 't_cors', title: 'Fix CORS', stuck: true },
     ]);
     expect(validatePlan([{ name: 'mark_stuck', input: { task: 'Fix CORS', stuck: false } }], ctx).actions[0]).toMatchObject({ stuck: false });
+  });
+});
+
+describe('validatePlan — draft_recipe is gated twice (opt-in + shipped-own-task)', () => {
+  it('drops draft_recipe when publishing is off, even for a valid shipped task', () => {
+    const { actions, dropped } = validatePlan([{ name: 'draft_recipe', input: { task: 'Shipped thing' } }], ctx);
+    expect(actions).toEqual([]);
+    expect(dropped[0]).toMatch(/off in Settings/);
+  });
+
+  it('allows draft_recipe for a shipped OWN task when publishing is on', () => {
+    const { actions } = validatePlan([{ name: 'draft_recipe', input: { task: 'Shipped thing' } }], { ...ctx, canPublish: true });
+    expect(actions).toEqual([{ kind: 'draft_recipe', taskId: 't_ship', title: 'Shipped thing' }]);
+  });
+
+  it('drops draft_recipe for a task that is not shipped yet', () => {
+    const { actions, dropped } = validatePlan([{ name: 'draft_recipe', input: { task: 'Fix CORS' } }], { ...ctx, canPublish: true });
+    expect(actions).toEqual([]);
+    expect(dropped[0]).toMatch(/isn't shipped/);
+  });
+
+  it("drops draft_recipe for a task that isn't the user's own", () => {
+    expect(validatePlan([{ name: 'draft_recipe', input: { task: 'Someone elses' } }], { ...ctx, canPublish: true }).actions).toEqual([]);
   });
 });
 

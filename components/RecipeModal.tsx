@@ -34,12 +34,16 @@ export function RecipeModal({
   recipe,
   draft,
   members,
+  requireEdit = false,
   onClose,
   onCreated,
 }: {
   actor: Actor;
   recipe?: Recipe | null;
   draft?: RecipeDraft | null;
+  /** When true (the agent draft path), "Bank it" stays locked until the human has changed
+   * the draft — publishing raw model text as your own words needs at least one human touch. */
+  requireEdit?: boolean;
   /**
    * The cohort, passed only when the text started as a MODEL draft (`draft` present) so the
    * peer-name gate can run. A model draft is written from attacker-controlled commit/PR text
@@ -57,6 +61,13 @@ export function RecipeModal({
   const [error, setError] = useState('');
 
   const valid = problem.trim().length > 0 && body.trim().length > 0;
+
+  // Require-one-edit: on the agent draft path, the draft must be changed before it can be
+  // banked. Any edit to either field counts.
+  const edited =
+    !requireEdit || !draft
+      ? true
+      : problem.trim() !== (draft.problem ?? '').trim() || body.trim() !== (draft.body ?? '').trim();
 
   async function save() {
     if (!valid || saving) return;
@@ -116,6 +127,13 @@ export function RecipeModal({
           // fields below work exactly as they always did.
           <p className="text-xs text-zinc-400">{draft.note}</p>
         )}
+        {requireEdit && (
+          // The agent drafted this. Say plainly where it goes and that a human must touch it.
+          <p className="text-xs text-zinc-400">
+            Pulse drafted this from your work. It posts to the cohort under your name — edit it
+            first, then bank it.
+          </p>
+        )}
         <Field label="The problem" hint="In your words. This is how someone finds it.">
           <Input
             value={problem}
@@ -146,7 +164,7 @@ export function RecipeModal({
 
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={save} disabled={!valid || saving}>
+          <Button variant="primary" onClick={save} disabled={!valid || saving || !edited}>
             {saving ? 'Saving…' : recipe ? 'Save' : 'Bank it'}
           </Button>
         </div>

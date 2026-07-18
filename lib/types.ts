@@ -131,6 +131,13 @@ export type GitHubLink = {
    */
   createTasksFromBranches: boolean;
   /**
+   * Off by default, and NOT granted by /connect — consent there buys sensing, not an agent
+   * that publishes for you. When on, Ask Pulse may draft a recipe from your work and, after
+   * you edit it and confirm, post it to the cohort under your name (behind the peer-name
+   * gate). Own-board agent actions never need this; only the one publish path does. Spec §9.
+   */
+  agentPublishOptIn?: boolean;
+  /**
    * Every distinct piece of work Pulse has already narrated — the budget guard, not an
    * optimisation.
    *
