@@ -40,11 +40,13 @@ function runTick() {
 }
 
 /**
- * GET — the Vercel-cron door. Vercel Cron can only issue GET, and (when `CRON_SECRET` is
- * set) sends `Authorization: Bearer <CRON_SECRET>`. This is what `vercel.json`'s schedule
- * hits. Until Nik sets both `CRON_SECRET` and `FIREBASE_SERVICE_ACCOUNT`, it 503s loudly
- * rather than run open in prod — the cron ticking every 15 min against an unconfigured
- * endpoint is harmless and self-heals the moment the credentials land.
+ * GET — the cron door. Vercel Cron can only issue GET, and (when `CRON_SECRET` is set) sends
+ * `Authorization: Bearer <CRON_SECRET>`. To switch Broker on: add a cron in the Vercel
+ * dashboard (Project → Settings → Cron Jobs) pointing at `/api/broker` at a frequency the
+ * plan allows, and set `CRON_SECRET` + `FIREBASE_SERVICE_ACCOUNT`. (The schedule lives in the
+ * dashboard, not `vercel.json`, so the deploy can't be rejected by a plan's cron-frequency
+ * limit.) Until then it 503s loudly rather than run open in prod — a cron ticking against an
+ * unconfigured endpoint is harmless and self-heals the moment the credentials land.
  */
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
