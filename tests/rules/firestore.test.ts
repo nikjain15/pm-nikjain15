@@ -978,3 +978,33 @@ describe('briefs — your Home brief is yours alone', () => {
     await assertFails(getDoc(doc(asAnon(env), path)));
   });
 });
+
+/* ==========================================================================
+ * askThreads — the agent's transcript is yours alone.
+ *
+ * It holds your commands and Pulse's replies about YOUR board. Like githubLinks
+ * and briefs, no peer may read your conversation or write into it.
+ * ========================================================================== */
+describe('askThreads — your agent conversation is private', () => {
+  const path = `askThreads/${ALICE}/turns/t1`;
+
+  it('lets you write and read your own turns', async () => {
+    await assertSucceeds(setDoc(doc(as(env, ALICE), path), { role: 'you', text: 'move x to done', createdAt: new Date() }));
+    await assertSucceeds(getDocs(collection(as(env, ALICE), 'askThreads', ALICE, 'turns')));
+  });
+
+  it('denies a peer reading your conversation', async () => {
+    await seed(env, path, { role: 'you', text: 'private note', createdAt: new Date() });
+    await assertFails(getDoc(doc(as(env, BOB), path)));
+    await assertFails(getDocs(collection(as(env, BOB), 'askThreads', ALICE, 'turns')));
+  });
+
+  it('denies a peer writing into your conversation', async () => {
+    await assertFails(setDoc(doc(as(env, BOB), path), { role: 'you', text: 'forged', createdAt: new Date() }));
+  });
+
+  it('denies an anonymous read', async () => {
+    await seed(env, path, { role: 'you', text: 'private note', createdAt: new Date() });
+    await assertFails(getDoc(doc(asAnon(env), path)));
+  });
+});

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { planActions } from '@/lib/agent-plan';
+import { planActions, type HistoryTurn } from '@/lib/agent-plan';
 import type { BoardContext } from '@/lib/agent';
 import { evictExpired, hitRateLimit, type RateLimitState } from '@/lib/rate-limit';
 
@@ -30,12 +30,26 @@ function clientIp(request: Request): string {
   return fwd?.split(',')[0]?.trim() || 'unknown';
 }
 
-type AskRequest = { utterance: unknown; context: unknown };
+type AskRequest = { utterance: unknown; context: unknown; history: unknown };
 
 function validContext(c: unknown): c is BoardContext {
   if (typeof c !== 'object' || c === null) return false;
   const ctx = c as Record<string, unknown>;
   return typeof ctx.uid === 'string' && Array.isArray(ctx.tasks) && Array.isArray(ctx.projects);
+}
+
+/** Coerce the client's history into bounded, safe turns. Never trusted — it's used only as
+ *  prompt context, and re-validation of any resulting action still happens in validatePlan. */
+function cleanHistory(h: unknown): HistoryTurn[] {
+  if (!Array.isArray(h)) return [];
+  return h
+    .filter((t): t is { role: unknown; text: unknown } => typeof t === 'object' && t !== null)
+    .map((t) => ({
+      role: (t as { role: unknown }).role === 'pulse' ? ('pulse' as const) : ('you' as const),
+      text: typeof (t as { text: unknown }).text === 'string' ? ((t as { text: string }).text).slice(0, 300) : '',
+    }))
+    .filter((t) => t.text.length > 0)
+    .slice(-8);
 }
 
 export async function POST(request: Request) {
@@ -60,7 +74,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await planActions(body.utterance, body.context);
+  const result = await planActions(body.utterance, body.context, cleanHistory(body.history));
   // 200 on every planning path: an empty plan with a reason is an outcome the UI states
   // calmly, not an error.
   return NextResponse.json(result);

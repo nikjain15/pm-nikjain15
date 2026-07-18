@@ -28,7 +28,10 @@ import type { Page } from '@playwright/test';
  * against anything else (playwright.config guards that), so hard-coding localhost is safe.
  */
 const EMULATOR_PROJECT = 'demo-pulse';
-const FIRESTORE_RESET = `http://127.0.0.1:8080/emulator/v1/projects/${EMULATOR_PROJECT}/databases/(default)/documents`;
+// Port defaults to 8080, overridable so a run isolated onto a spare port (to dodge a second
+// concurrent emulator) resets the right one.
+const FS_PORT = process.env.FIRESTORE_EMULATOR_PORT ?? '8080';
+const FIRESTORE_RESET = `http://127.0.0.1:${FS_PORT}/emulator/v1/projects/${EMULATOR_PROJECT}/databases/(default)/documents`;
 
 export async function resetEmulator(): Promise<void> {
   const firestore = await fetch(FIRESTORE_RESET, { method: 'DELETE' });

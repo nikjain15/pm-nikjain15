@@ -64,6 +64,26 @@ const MOTION_CSS = `
 @media (prefers-reduced-motion: no-preference) {
   @keyframes pulse-row-in { from { opacity: 0 } to { opacity: 1 } }
   .pulse-row-in { animation: pulse-row-in 200ms ease-out }
+}
+/* Home is two columns on desktop — content left, the Pulse agent as a sticky rail right —
+   and a single stacked column below lg, where the agent sits right under the hero (second,
+   still prominent) so it's never buried at the bottom on a phone. */
+.home-grid {
+  display: grid;
+  gap: 2.5rem 2rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'hero' 'agent' 'updates' 'feed';
+}
+.home-hero { grid-area: hero; }
+.home-agent { grid-area: agent; min-width: 0; }
+.home-updates { grid-area: updates; min-width: 0; }
+.home-feed { grid-area: feed; }
+@media (min-width: 1024px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+    grid-template-areas: 'hero agent' 'updates agent' 'feed agent';
+  }
+  .home-agent { position: sticky; top: 1.5rem; align-self: start; }
 }`;
 
 /* ----------------------------------------------------------------------- view */
@@ -144,98 +164,100 @@ function HomeView() {
     <>
       <style>{MOTION_CSS}</style>
 
-      {/* Narratives are prose. Past ~68ch they get harder to read, so extra width becomes
-          margin and never a second column (§4). Centred from 1440. */}
-      <div className="w-full max-w-[68ch] min-[1440px]:mx-auto">
+      <div className="mx-auto w-full max-w-6xl">
         {/* One stable page title. Visually the header already reads "Pulse"; a screen
             reader navigating by heading needs a real h1 that doesn't move or change with
-            state. sr-only so it doesn't duplicate the header on screen. Everything below
-            is h2. */}
+            state. sr-only so it doesn't duplicate the header on screen. */}
         <h1 className="sr-only">Your week on Pulse</h1>
 
         <ErrorNote>{error}</ErrorNote>
 
-        {/* Zone 1 — momentum leads, with the single Pulse voice beneath it. */}
-        <PulseBrief
-          events={events}
-          tasks={tasks}
-          uid={uid}
-          displayName={memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member'}
-          narrationOptIn={link?.narrationOptIn === true}
-        />
+        {/* Two columns on desktop: content left, the Pulse agent as a sticky rail on the
+            right. Below lg it collapses to one column — the agent sits right under the hero
+            (see .home-grid), so it stays prominent on a phone instead of at the very bottom. */}
+        <div className="home-grid">
+          {/* Hero — momentum leads, with the single Pulse voice beneath it. */}
+          <div className="home-hero">
+            <PulseBrief
+              events={events}
+              tasks={tasks}
+              uid={uid}
+              displayName={memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member'}
+              narrationOptIn={link?.narrationOptIn === true}
+            />
+          </div>
 
-        {/* Zone 2 — Ask Pulse, the key interaction, given its own real estate right up top.
-            Its results render in-flow inside AskPulse, pushing Zone 3 down — never over it. */}
-        <div className="mt-12">
-          <AskPulse
-            actor={{
-              uid,
-              name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
-              photoURL: user!.photoURL,
-            }}
-            tasks={tasks}
-            projects={projects}
-            members={members}
-            ready={ready}
-            canPublish={link?.agentPublishOptIn === true}
-          />
-        </div>
-
-        {/* Zone 3 — updates, structured together with even spacing rather than scattered
-            full-width cards. */}
-        <div className="mt-12 space-y-4">
-          {/* The one collaborative nudge — public facts only, your own Home, at most one. */}
-          {connection && <SpottedConnection connection={connection} members={members} />}
-
-          {posted ? (
-            <PostedRow event={posted} onError={setError} />
-          ) : linkReady && link === null ? (
-            // Never chose at /connect — wandered off mid-decision. One open question, asked
-            // once; answering it (either way) makes this card gone for good.
-            <DecideCard uid={uid} onError={setError} />
-          ) : (
-            // Only the person who declined gets told there's nothing of theirs — everyone
-            // else's silence is nobody's business, including their own dashboard's.
-            link?.status === 'declined' && <NothingOfYours />
-          )}
-
-          {offer && (
-            <RecipeOfferCard
+          {/* The agent — its own workspace, sticky beside the content on desktop. */}
+          <div className="home-agent">
+            <AskPulse
               actor={{
                 uid,
-                // Member doc, not the User: the rules reject a mismatched actorName, and the
-                // old `?? ''` fallback could even publish a nameless recipe. See auth-context.
                 name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
                 photoURL: user!.photoURL,
               }}
-              offer={offer}
+              tasks={tasks}
+              projects={projects}
               members={members}
-              onGone={() => setOfferGone(true)}
+              ready={ready}
+              canPublish={link?.agentPublishOptIn === true}
             />
-          )}
+          </div>
 
-          {/* One card, not two stacked negations: when an invitation above is showing and
-              the ask ladder only has its floor to offer, "nothing of yours" + "nothing needs
-              you" reads like the product shrugging twice. The invitation wins the slot. */}
-          {!(
-            !posted &&
-            linkReady &&
-            (link === null || link?.status === 'declined') &&
-            ask.kind === 'nothing'
-          ) && <StandingAsk ask={ask} uid={uid} ready={ready} intro={helperIntro} onError={setError} />}
-        </div>
+          {/* Updates — structured together with even spacing. */}
+          <div className="home-updates space-y-4">
+            {/* The one collaborative nudge — public facts only, your own Home, at most one. */}
+            {connection && <SpottedConnection connection={connection} members={members} />}
 
-        <div className="mt-12">
+            {posted ? (
+              <PostedRow event={posted} onError={setError} />
+            ) : linkReady && link === null ? (
+              // Never chose at /connect — wandered off mid-decision. One open question, asked
+              // once; answering it (either way) makes this card gone for good.
+              <DecideCard uid={uid} onError={setError} />
+            ) : (
+              // Only the person who declined gets told there's nothing of theirs — everyone
+              // else's silence is nobody's business, including their own dashboard's.
+              link?.status === 'declined' && <NothingOfYours />
+            )}
 
-        <CohortWeek
-          events={events}
-          fresh={fresh}
-          members={members}
-          recipes={recipes}
-          ready={feedReady}
-          uid={uid}
-          onError={setError}
-        />
+            {offer && (
+              <RecipeOfferCard
+                actor={{
+                  uid,
+                  // Member doc, not the User: the rules reject a mismatched actorName, and the
+                  // old `?? ''` fallback could even publish a nameless recipe. See auth-context.
+                  name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
+                  photoURL: user!.photoURL,
+                }}
+                offer={offer}
+                members={members}
+                onGone={() => setOfferGone(true)}
+              />
+            )}
+
+            {/* One card, not two stacked negations: when an invitation above is showing and
+                the ask ladder only has its floor to offer, "nothing of yours" + "nothing needs
+                you" reads like the product shrugging twice. The invitation wins the slot. */}
+            {!(
+              !posted &&
+              linkReady &&
+              (link === null || link?.status === 'declined') &&
+              ask.kind === 'nothing'
+            ) && <StandingAsk ask={ask} uid={uid} ready={ready} intro={helperIntro} onError={setError} />}
+          </div>
+
+          {/* The cohort's week — recedes at the bottom of the content column. */}
+          <div className="home-feed">
+            <CohortWeek
+              events={events}
+              fresh={fresh}
+              members={members}
+              recipes={recipes}
+              ready={feedReady}
+              uid={uid}
+              onError={setError}
+            />
+          </div>
         </div>
       </div>
     </>

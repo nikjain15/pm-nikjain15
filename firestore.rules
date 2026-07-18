@@ -86,6 +86,15 @@ service cloud.firestore {
       allow read, write: if isSelf(uid);
     }
 
+    // --- askThreads ----------------------------------------------------------
+    // The Ask Pulse agent's transcript — your commands and Pulse's replies, so the panel
+    // remembers your context across visits (lib/ask-thread.ts). It can quote your own tasks
+    // and Pulse's answers about your own board, so like githubLinks it is yours ALONE: no
+    // peer may read your conversation or write into it. Scoped by the owning uid in the path.
+    match /askThreads/{uid}/turns/{turnId} {
+      allow read, write: if isSelf(uid);
+    }
+
     // --- projects ------------------------------------------------------------
     // Anyone signed in can create and edit projects (shared cohort work).
     // ownerUid is set at creation and cannot be reassigned afterwards.

@@ -62,7 +62,7 @@ export function useAskPulse({
   }, []);
 
   const run = useCallback(
-    async (utterance: string) => {
+    async (utterance: string, history: { role: 'you' | 'pulse'; text: string }[] = []): Promise<string> => {
       setPhase('planning');
       setSteps([]);
       setNote(null);
@@ -73,12 +73,17 @@ export function useAskPulse({
         const res = await fetch('/api/ask-pulse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ utterance, context: boardContext(actor.uid, tasks, projects, canPublish) }),
+          body: JSON.stringify({
+            utterance,
+            context: boardContext(actor.uid, tasks, projects, canPublish),
+            history,
+          }),
         });
         if (!res.ok) {
           setPhase('degraded');
-          setNote("Pulse can't plan right now. The board still works by hand.");
-          return;
+          const note = "Pulse can't plan right now. The board still works by hand.";
+          setNote(note);
+          return note;
         }
         const data = (await res.json()) as {
           actions: AgentAction[];
@@ -93,35 +98,45 @@ export function useAskPulse({
           if (answerText) {
             setAnswer(answerText);
             setPhase('answered');
-            return;
+            return answerText;
           }
           setPhase('degraded');
+          let note: string;
           if (data.reason) {
-            setNote("Pulse can't plan right now. The board still works by hand.");
+            note = "Pulse can't plan right now. The board still works by hand.";
           } else if (data.dropped && data.dropped.length > 0) {
             // Say what it couldn't do, in the reason's own words, then how to fix it.
-            setNote(`I couldn't do that — ${data.dropped[0]}. Try being specific, like “add a task to fix the login bug”.`);
+            note = `I couldn't do that — ${data.dropped[0]}. Try being specific, like “add a task to fix the login bug”.`;
           } else {
-            setNote('Tell me what to do in plain words — like “add a task to fix the login bug”, “move the login card to done”, or “start a project called Marketing”.');
+            note =
+              'Tell me what to do in plain words — like “add a task to fix the login bug”, “move the login card to done”, or “start a project called Marketing”.';
           }
-          return;
+          setNote(note);
+          return note;
         }
       } catch {
         setPhase('degraded');
-        setNote("Pulse can't plan right now. The board still works by hand.");
-        return;
+        const note = "Pulse can't plan right now. The board still works by hand.";
+        setNote(note);
+        return note;
       }
 
       setPhase('running');
       const createdProjects = new Map<string, string>(); // lower-name -> new id
+      // Labels of what actually landed, joined into the one-line summary the panel persists
+      // to the thread — so history reads "Created X · Moved Y → done", not raw tool calls.
+      const doneLabels: string[] = [];
       let next = 0;
       const add = (s: Omit<Step, 'id'>) => {
         const id = next++;
+        if (s.state === 'done') doneLabels.push(s.label);
         setSteps((prev) => [...prev, { ...s, id }]);
         return id;
       };
-      const settle = (id: number, patch: Partial<Step>) =>
+      const settle = (id: number, patch: Partial<Step>) => {
+        if (patch.state === 'done' && typeof patch.label === 'string') doneLabels.push(patch.label);
         setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+      };
 
       for (const action of actions) {
         try {
@@ -246,6 +261,7 @@ export function useAskPulse({
       }
 
       setPhase('done');
+      return doneLabels.join(' · ') || 'Done.';
     },
     [actor, tasks, projects, canPublish, onDraftRecipe]
   );
