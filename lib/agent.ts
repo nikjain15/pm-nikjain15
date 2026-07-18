@@ -149,9 +149,30 @@ export const DRAFT_RECIPE_TOOL = {
   },
 } as const;
 
-/** The tools handed to the model — the publish tool appears only for an opted-in user. */
+/**
+ * The read-only answer tool. Pulse doesn't only DO things on your board — it answers
+ * questions about it. This is deliberately not an action: it writes nothing, so it needs no
+ * validation against the board and carries none of the injection risk the action tools do.
+ * The model calls it when the user is asking rather than commanding ("what should I focus
+ * on?", "what's still open?", "plan my week"). It must answer only from the provided context
+ * and never invent work — the prompt enforces that, and there's nothing here to execute.
+ */
+export const ANSWER_TOOL = {
+  name: 'answer',
+  description:
+    "Answer the user's question about their own board in one or two plain sentences, using only the facts in the context. Use this when the user is asking rather than commanding — 'what should I focus on?', 'what's left?', 'plan my week', 'am I behind on anything?'. Never invent tasks, projects, dates, or names. Do NOT use this to perform actions — use the action tools for those.",
+  input_schema: {
+    type: 'object',
+    properties: { text: { type: 'string', description: 'One or two plain sentences. No markdown, no lists.' } },
+    required: ['text'],
+  },
+} as const;
+
+/** The tools handed to the model — the publish tool appears only for an opted-in user, and
+ *  the read-only answer tool is always available (it can do no harm). */
 export function agentTools(canPublish: boolean) {
-  return canPublish ? [...AGENT_TOOLS, DRAFT_RECIPE_TOOL] : AGENT_TOOLS;
+  const base = [...AGENT_TOOLS, ANSWER_TOOL];
+  return canPublish ? [...base, DRAFT_RECIPE_TOOL] : base;
 }
 
 /** A raw tool call as the model emits it — untrusted until validated. */

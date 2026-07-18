@@ -35,7 +35,7 @@ export function AskPulse({
 }) {
   const [pendingRecipe, setPendingRecipe] = useState<{ taskId: string; title: string } | null>(null);
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null);
-  const { phase, steps, note, run, undoStep, reset } = useAskPulse({
+  const { phase, steps, note, answer, run, undoStep, reset } = useAskPulse({
     actor,
     tasks,
     projects,
@@ -86,7 +86,6 @@ export function AskPulse({
   // Not until the board has loaded: acting on a board Pulse hasn't read yet would move or
   // miss cards silently. `ready` is the cohort listener's first snapshot.
   const busy = phase === 'planning' || phase === 'running';
-  const blocked = busy || !ready;
 
   const inputRef = useRef<HTMLInputElement>(null);
   // A "why nothing happened" line. The single worst outcome for an agent is a send that
@@ -248,6 +247,27 @@ export function AskPulse({
               clear
             </button>
           )}
+        </div>
+      )}
+
+      {/* You asked a question — Pulse answers in its own voice, not a list of steps. */}
+      {phase === 'answered' && answer && (
+        <div className="pulse-row-in mt-3">
+          <div className="flex items-start gap-2.5">
+            <span
+              aria-hidden
+              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[10px] text-emerald-950"
+            >
+              P
+            </span>
+            <p className="text-sm leading-snug text-zinc-100">{answer}</p>
+          </div>
+          <button
+            onClick={reset}
+            className="mt-2 pl-[30px] text-xs text-zinc-500 underline underline-offset-2 hover:text-zinc-400"
+          >
+            clear
+          </button>
         </div>
       )}
 

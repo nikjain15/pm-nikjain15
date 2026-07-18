@@ -28,7 +28,7 @@ export type Step = {
   undo: (() => Promise<void>) | null;
 };
 
-export type Phase = 'idle' | 'planning' | 'running' | 'done' | 'degraded';
+export type Phase = 'idle' | 'planning' | 'running' | 'done' | 'degraded' | 'answered';
 
 const dueFrom = (iso: string | null): Timestamp | null =>
   iso ? Timestamp.fromDate(new Date(`${iso}T00:00:00`)) : null;
@@ -51,11 +51,14 @@ export function useAskPulse({
   const [phase, setPhase] = useState<Phase>('idle');
   const [steps, setSteps] = useState<Step[]>([]);
   const [note, setNote] = useState<string | null>(null);
+  // Pulse's reply when you ASKED rather than commanded — a conversational answer, not a plan.
+  const [answer, setAnswer] = useState<string | null>(null);
 
   const reset = useCallback(() => {
     setPhase('idle');
     setSteps([]);
     setNote(null);
+    setAnswer(null);
   }, []);
 
   const run = useCallback(
@@ -63,6 +66,7 @@ export function useAskPulse({
       setPhase('planning');
       setSteps([]);
       setNote(null);
+      setAnswer(null);
 
       let actions: AgentAction[] = [];
       try {
@@ -76,9 +80,21 @@ export function useAskPulse({
           setNote("Pulse can't plan right now. The board still works by hand.");
           return;
         }
-        const data = (await res.json()) as { actions: AgentAction[]; reason?: string; dropped?: string[] };
+        const data = (await res.json()) as {
+          actions: AgentAction[];
+          reason?: string;
+          dropped?: string[];
+          answer?: string;
+        };
         actions = data.actions ?? [];
+        const answerText = typeof data.answer === 'string' && data.answer.trim() ? data.answer.trim() : null;
         if (actions.length === 0) {
+          // You asked a question — Pulse answers, rather than reporting it "couldn't plan".
+          if (answerText) {
+            setAnswer(answerText);
+            setPhase('answered');
+            return;
+          }
           setPhase('degraded');
           if (data.reason) {
             setNote("Pulse can't plan right now. The board still works by hand.");
@@ -248,5 +264,5 @@ export function useAskPulse({
     [steps]
   );
 
-  return { phase, steps, note, run, undoStep, reset };
+  return { phase, steps, note, answer, run, undoStep, reset };
 }

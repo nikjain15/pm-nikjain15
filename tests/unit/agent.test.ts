@@ -168,3 +168,24 @@ describe('boardContext — only the user own items, no peers, no timestamps', ()
     expect(boardContext('me', tasks, projects).projects.map((p) => p.id)).toEqual(['p1']);
   });
 });
+
+describe('answer mode — Pulse can reply, not only act', () => {
+  it('offers the read-only answer tool to everyone, and draft_recipe only to opted-in users', async () => {
+    const { agentTools } = await import('@/lib/agent');
+    const names = (canPublish: boolean) => agentTools(canPublish).map((t) => t.name);
+    expect(names(false)).toContain('answer');
+    expect(names(false)).not.toContain('draft_recipe');
+    expect(names(true)).toContain('answer');
+    expect(names(true)).toContain('draft_recipe');
+  });
+
+  it('extracts a plain answer, stripping markup and bounding length', async () => {
+    const { extractAnswer } = await import('@/lib/agent-plan');
+    expect(extractAnswer([{ name: 'answer', input: { text: '  Focus on **Login screen** next.  ' } }])).toBe(
+      'Focus on Login screen next.'
+    );
+    expect(extractAnswer([{ name: 'create_task', input: { title: 'x', project: 'y' } }])).toBeUndefined();
+    expect(extractAnswer([{ name: 'answer', input: { text: '   ' } }])).toBeUndefined();
+    expect(extractAnswer([{ name: 'answer', input: { text: 'a'.repeat(700) } }])).toBeUndefined();
+  });
+})
