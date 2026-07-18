@@ -18,7 +18,10 @@ import { formatEvidence, relativeTime, selectAsk, type Ask, type AskContext } fr
 import type { GitHubLink, Introduction, Member, PulseEvent, Recipe, Task } from '@/lib/types';
 import { useCohort } from '@/lib/use-cohort';
 import { AskPulse } from './AskPulse';
+import { Momentum } from './Momentum';
 import { useRecipes } from '@/lib/use-recipes';
+import { useBrief } from '@/lib/use-brief';
+import type { BriefFacts } from '@/lib/brief-fallback';
 
 /**
  * Home — `/` signed in. DESIGN-SPEC §6.
@@ -138,7 +141,13 @@ function HomeView() {
 
         {/* Pulse speaks first — the AI-first top of the page. It says what it did and where
             the cohort stands (the gamified momentum), before any board or feed. */}
-        <PulseBrief events={events} uid={uid} />
+        <PulseBrief
+          events={events}
+          tasks={tasks}
+          uid={uid}
+          displayName={memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member'}
+          narrationOptIn={link?.narrationOptIn === true}
+        />
 
         {posted ? (
           <PostedRow event={posted} onError={setError} />
@@ -828,12 +837,25 @@ function AskCard({
  * the SAME `pulse-row-in` the feed uses — one shared idiom, behind `prefers-reduced-motion`,
  * not a new kind of animation.
  */
-function PulseBrief({ events, uid }: { events: PulseEvent[]; uid: string }) {
+function PulseBrief({
+  events,
+  tasks,
+  uid,
+  displayName,
+  narrationOptIn,
+}: {
+  events: PulseEvent[];
+  tasks: Task[];
+  uid: string;
+  displayName: string;
+  narrationOptIn: boolean;
+}) {
   const s = useMemo(() => {
     const midnight = new Date();
     midnight.setHours(0, 0, 0, 0);
     const weekAgo = midnight.getTime() - 6 * 86_400_000;
     const shipDays = new Set<number>();
+    const shipsByOffset = [0, 0, 0, 0, 0, 0, 0]; // index = days ago, 0 = today
     let cohortShipped = 0;
     let banked = 0;
     let cohortUnstuck = 0;
@@ -849,6 +871,7 @@ function PulseBrief({ events, uid }: { events: PulseEvent[]; uid: string }) {
         at.setHours(0, 0, 0, 0);
         const d = Math.round((midnight.getTime() - at.getTime()) / 86_400_000);
         if (d >= 0 && d <= 30) shipDays.add(d);
+        if (d >= 0 && d <= 6) shipsByOffset[d] += 1;
       } else if (e.kind === 'recipe_banked' && recent) {
         banked += 1;
       } else if (e.kind === 'intro_made' && recent) {
@@ -863,25 +886,48 @@ function PulseBrief({ events, uid }: { events: PulseEvent[]; uid: string }) {
     const todayShipped = shipDays.has(0);
     let streak = 0;
     for (let d = todayShipped ? 0 : 1; shipDays.has(d); d++) streak += 1;
-    return { cohortShipped, banked, cohortUnstuck, youShipped, youUnstuck, youKudos, streak };
-  }, [events, uid]);
+    // oldest → today, for the momentum "current" line.
+    const shipsByDay = [6, 5, 4, 3, 2, 1, 0].map((o) => shipsByOffset[o]);
+    // What you're in the middle of — your own open cards, so the brief can name the work.
+    const yourOpenTitles = tasks
+      .filter((t) => (t.creatorUid === uid || t.assigneeUid === uid) && t.status !== 'done')
+      .map((t) => t.title);
+    return {
+      cohortShipped,
+      banked,
+      cohortUnstuck,
+      youShipped,
+      youUnstuck,
+      youKudos,
+      streak,
+      shipsByDay,
+      yourOpenTitles,
+    };
+  }, [events, tasks, uid]);
 
-  // Nothing has happened yet — the brief stays quiet rather than narrate an empty week.
-  if (s.cohortShipped === 0 && s.banked === 0 && s.cohortUnstuck === 0 && s.youShipped === 0) {
-    return null;
-  }
+  const facts: BriefFacts = {
+    displayName,
+    cohortShipped: s.cohortShipped,
+    cohortFiguredOut: s.banked,
+    cohortUnstuck: s.cohortUnstuck,
+    shipStreakDays: s.streak,
+    youShipped: s.youShipped,
+    youUnstuck: s.youUnstuck,
+    youKudos: s.youKudos,
+    yourOpenTitles: s.yourOpenTitles,
+  };
+  // Hooks run unconditionally, before any early return.
+  const brief = useBrief({ uid, facts, narrationOptIn });
 
-  // Pulse's own voice, leading with what it did for you.
-  const lead =
-    s.youShipped > 0
-      ? "I moved your work to done and told the team — you didn't type a thing."
-      : 'The cohort is building. Here is where things stand.';
-
-  const cohortBits = [
-    `shipped ${s.cohortShipped}`,
-    s.banked > 0 && `figured out ${s.banked}`,
-    s.cohortUnstuck > 0 && `unstuck ${s.cohortUnstuck}`,
-  ].filter(Boolean);
+  // Nothing has happened and nothing is open — the brief stays quiet rather than narrate an
+  // empty week (VOICE rule 4 puts the invitation elsewhere).
+  const empty =
+    s.cohortShipped === 0 &&
+    s.banked === 0 &&
+    s.cohortUnstuck === 0 &&
+    s.youShipped === 0 &&
+    s.yourOpenTitles.length === 0;
+  if (empty) return null;
 
   const yours = [
     s.youShipped > 0 && `shipped ${s.youShipped}`,
@@ -890,28 +936,42 @@ function PulseBrief({ events, uid }: { events: PulseEvent[]; uid: string }) {
   ].filter(Boolean);
 
   return (
-    <div className="pulse-row-in mb-6">
-      <div className="mb-2 flex items-center gap-2">
-        <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-400" />
-        <span className="text-xs text-zinc-400">Pulse &middot; caught you up</span>
-      </div>
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <p className="text-base font-medium text-zinc-100">{lead}</p>
-        <p className="mt-1.5 text-sm text-zinc-300">
-          {/* The gamified beat — a shared streak, collective and generosity-first, never a
-              per-person rank. */}
-          {s.streak >= 2 && (
-            <span className="text-emerald-400">On a {s.streak}-day shipping streak. </span>
-          )}
-          The cohort {cohortBits.join(' · ')} this week.
-        </p>
-        {yours.length > 0 && (
-          <p className="mt-1 text-xs text-zinc-400">
-            your part <span className="text-zinc-500">&middot; only you see this</span> —{' '}
-            {yours.join(' · ')}
+    <div className="pulse-row-in mb-8">
+      {/* Pulse speaks first — the model-written brief, in its own voice. */}
+      <div className="mb-6 flex items-start gap-3">
+        <span
+          aria-hidden
+          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-medium text-emerald-950"
+        >
+          P
+        </span>
+        {brief.text && (
+          <p
+            className="text-lg leading-snug text-zinc-100"
+            style={{ fontFamily: 'var(--font-voice, Georgia, serif)' }}
+          >
+            {brief.text}
           </p>
         )}
       </div>
+
+      {/* The cohort's momentum — one element, three lenses, collective and never ranked. */}
+      <Momentum
+        data={{
+          shipsByDay: s.shipsByDay,
+          streakDays: s.streak,
+          figuredOut: s.banked,
+          unstuck: s.cohortUnstuck,
+          cohortShipped: s.cohortShipped,
+        }}
+      />
+
+      {yours.length > 0 && (
+        <p className="mt-4 text-xs text-zinc-400">
+          your part <span className="text-zinc-500">&middot; only you see this</span> —{' '}
+          {yours.join(' · ')}
+        </p>
+      )}
     </div>
   );
 }

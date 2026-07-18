@@ -69,7 +69,13 @@ export function useBrief({
   narrationOptIn: boolean;
 }): BriefState {
   const signature = useMemo(() => factsSignature(facts), [facts]);
-  const [state, setState] = useState<BriefState>({ text: '', source: 'facts', loading: true });
+  // Seed with the warm assembled sentence so the first paint is never empty or a spinner —
+  // the model text (or the same fallback) settles in from the effect.
+  const [state, setState] = useState<BriefState>(() => ({
+    text: assembleBrief(facts),
+    source: 'facts',
+    loading: true,
+  }));
 
   useEffect(() => {
     let cancelled = false;
@@ -144,8 +150,11 @@ export function useBrief({
     return () => {
       cancelled = true;
     };
-    // signature captures every fact that changes the brief; uid + opt-in complete the key.
-  }, [uid, signature, narrationOptIn, facts]);
+    // `facts` is intentionally not a dep: `signature` is derived from its content, so the
+    // effect re-runs exactly when the content changes — depending on the object's identity
+    // would refetch on every render for no reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, signature, narrationOptIn]);
 
   return state;
 }
