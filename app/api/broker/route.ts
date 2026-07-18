@@ -18,32 +18,56 @@ import { adminDb, runBrokerJob } from '@/lib/broker-admin';
  * A scheduler that thinks it's brokering while writing nothing is the stale-as-live
  * failure wearing a cron hat.
  */
-export async function POST(request: Request) {
-  const secret = process.env.BROKER_SECRET;
-  const onEmulator = !!process.env.FIRESTORE_EMULATOR_HOST;
+const onEmulator = () => !!process.env.FIRESTORE_EMULATOR_HOST;
 
-  if (secret) {
-    if (request.headers.get('x-broker-secret') !== secret) {
-      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    }
-  } else if (!onEmulator) {
-    // No secret and not the emulator: refuse to run open in prod.
-    return NextResponse.json({ ok: false, reason: 'not_configured' }, { status: 503 });
-  }
-
+/** Run one tick once the caller is authorised. Shared by the external-scheduler POST and
+ * the Vercel-cron GET, so both take the exact same degrade-loudly path. */
+function runTick() {
   const db = adminDb();
   if (!db) {
     // The credential is Nik's one action; until it exists this endpoint says so plainly.
     return NextResponse.json({ ok: false, reason: 'no_credential' }, { status: 503 });
   }
+  return runBrokerJob(db).then(
+    (result) => NextResponse.json({ ok: true, ...result }),
+    (err) => {
+      console.error('broker: run failed', err);
+      // Half-written state is safe — every write is create-if-absent at a derived id, so
+      // the next tick converges. Report the failure; never swallow it.
+      return NextResponse.json({ ok: false, reason: 'run_failed' }, { status: 500 });
+    }
+  );
+}
 
-  try {
-    const result = await runBrokerJob(db);
-    return NextResponse.json({ ok: true, ...result });
-  } catch (err) {
-    console.error('broker: run failed', err);
-    // Half-written state is safe — every write is create-if-absent at a derived id, so
-    // the next tick converges. Report the failure; never swallow it.
-    return NextResponse.json({ ok: false, reason: 'run_failed' }, { status: 500 });
+/**
+ * GET — the Vercel-cron door. Vercel Cron can only issue GET, and (when `CRON_SECRET` is
+ * set) sends `Authorization: Bearer <CRON_SECRET>`. This is what `vercel.json`'s schedule
+ * hits. Until Nik sets both `CRON_SECRET` and `FIREBASE_SERVICE_ACCOUNT`, it 503s loudly
+ * rather than run open in prod — the cron ticking every 15 min against an unconfigured
+ * endpoint is harmless and self-heals the moment the credentials land.
+ */
+export async function GET(request: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    if (request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    }
+  } else if (!onEmulator()) {
+    return NextResponse.json({ ok: false, reason: 'not_configured' }, { status: 503 });
   }
+  return runTick();
+}
+
+/** POST — the same job for any external scheduler that can send a header. Kept alongside
+ * the cron GET so a non-Vercel scheduler (or a manual curl with the secret) still works. */
+export async function POST(request: Request) {
+  const secret = process.env.BROKER_SECRET;
+  if (secret) {
+    if (request.headers.get('x-broker-secret') !== secret) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    }
+  } else if (!onEmulator()) {
+    return NextResponse.json({ ok: false, reason: 'not_configured' }, { status: 503 });
+  }
+  return runTick();
 }
