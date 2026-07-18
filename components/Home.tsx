@@ -158,6 +158,7 @@ function HomeView() {
               photoURL: user!.photoURL,
             }}
             offer={offer}
+            members={members}
             onGone={() => setOfferGone(true)}
           />
         )}

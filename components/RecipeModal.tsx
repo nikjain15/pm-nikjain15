@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { createRecipe, updateRecipe } from '@/lib/recipes';
-import type { Recipe } from '@/lib/types';
+import { checkRecipeBody } from '@/lib/sense';
+import type { Member, Recipe } from '@/lib/types';
 import { Button, ErrorNote, Field, Input, Modal, Textarea } from './ui';
 
 type Actor = { uid: string; name: string; photoURL: string | null };
@@ -32,12 +33,20 @@ export function RecipeModal({
   actor,
   recipe,
   draft,
+  members,
   onClose,
   onCreated,
 }: {
   actor: Actor;
   recipe?: Recipe | null;
   draft?: RecipeDraft | null;
+  /**
+   * The cohort, passed only when the text started as a MODEL draft (`draft` present) so the
+   * peer-name gate can run. A model draft is written from attacker-controlled commit/PR text
+   * and could name a teammate in cohort-read prose — the one publish path `checkNarrative`
+   * doesn't cover. A human typing their own recipe is ungated: it's their own words.
+   */
+  members?: Member[];
   onClose: () => void;
   onCreated?: (id: string) => void;
 }) {
@@ -63,6 +72,24 @@ export function RecipeModal({
         // "this took eleven goes" is permission to not get it first try.
         turns: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
       };
+
+      // The peer-name gate — only on a MODEL draft being banked. No facts-only fallback:
+      // a draft that names a teammate is blocked and stays here to edit, never redacted and
+      // published. The author, not the model, decides if a teammate's name belongs in
+      // something posted as them.
+      if (draft && members) {
+        const others = members
+          .filter((m) => m.uid !== actor.uid)
+          .map((m) => ({ handle: m.handle, displayName: m.displayName }));
+        const check = checkRecipeBody(input.problem, input.body, { handle: null, displayName: actor.name }, others);
+        if (!check.ok && check.reason === 'names_another_member') {
+          setError(
+            `This names ${check.member}. A recipe is your own words about your own work — take their name out and you can bank it.`
+          );
+          setSaving(false);
+          return;
+        }
+      }
 
       if (recipe) {
         await updateRecipe(recipe.id, input);
