@@ -155,8 +155,7 @@ function HomeView() {
 
         <ErrorNote>{error}</ErrorNote>
 
-        {/* Pulse speaks first — the AI-first top of the page. It says what it did and where
-            the cohort stands (the gamified momentum), before any board or feed. */}
+        {/* Zone 1 — momentum leads, with the single Pulse voice beneath it. */}
         <PulseBrief
           events={events}
           tasks={tasks}
@@ -165,60 +164,68 @@ function HomeView() {
           narrationOptIn={link?.narrationOptIn === true}
         />
 
-        {/* The one collaborative nudge — public facts only, your own Home, at most one. */}
-        {connection && <SpottedConnection connection={connection} members={members} />}
-
-        {posted ? (
-          <PostedRow event={posted} onError={setError} />
-        ) : linkReady && link === null ? (
-          // Never chose at /connect — wandered off mid-decision. One open question, asked
-          // once; answering it (either way) makes this card gone for good.
-          <DecideCard uid={uid} onError={setError} />
-        ) : (
-          // Only the person who declined gets told there's nothing of theirs — everyone
-          // else's silence is nobody's business, including their own dashboard's.
-          link?.status === 'declined' && <NothingOfYours />
-        )}
-
-        {offer && (
-          <RecipeOfferCard
+        {/* Zone 2 — Ask Pulse, the key interaction, given its own real estate right up top.
+            Its results render in-flow inside AskPulse, pushing Zone 3 down — never over it. */}
+        <div className="mt-12">
+          <AskPulse
             actor={{
               uid,
-              // Member doc, not the User: the rules reject a mismatched actorName, and the
-              // old `?? ''` fallback could even publish a nameless recipe. See auth-context.
               name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
               photoURL: user!.photoURL,
             }}
-            offer={offer}
+            tasks={tasks}
+            projects={projects}
             members={members}
-            onGone={() => setOfferGone(true)}
+            ready={ready}
+            canPublish={link?.agentPublishOptIn === true}
           />
-        )}
+        </div>
 
-        {/* One card, not two stacked negations: when an invitation above is showing and
-            the ask ladder only has its floor to offer, "nothing of yours" + "nothing needs
-            you" reads like the product shrugging twice. The invitation wins the slot. */}
-        {!(
-          !posted &&
-          linkReady &&
-          (link === null || link?.status === 'declined') &&
-          ask.kind === 'nothing'
-        ) && <StandingAsk ask={ask} uid={uid} ready={ready} intro={helperIntro} onError={setError} />}
+        {/* Zone 3 — updates, structured together with even spacing rather than scattered
+            full-width cards. */}
+        <div className="mt-12 space-y-4">
+          {/* The one collaborative nudge — public facts only, your own Home, at most one. */}
+          {connection && <SpottedConnection connection={connection} members={members} />}
 
-        {/* The interface, up front — in an AI-first home you tell Pulse what to do; the
-            board and feed below are the record, not the control panel. */}
-        <AskPulse
-          actor={{
-            uid,
-            name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
-            photoURL: user!.photoURL,
-          }}
-          tasks={tasks}
-          projects={projects}
-          members={members}
-          ready={ready}
-          canPublish={link?.agentPublishOptIn === true}
-        />
+          {posted ? (
+            <PostedRow event={posted} onError={setError} />
+          ) : linkReady && link === null ? (
+            // Never chose at /connect — wandered off mid-decision. One open question, asked
+            // once; answering it (either way) makes this card gone for good.
+            <DecideCard uid={uid} onError={setError} />
+          ) : (
+            // Only the person who declined gets told there's nothing of theirs — everyone
+            // else's silence is nobody's business, including their own dashboard's.
+            link?.status === 'declined' && <NothingOfYours />
+          )}
+
+          {offer && (
+            <RecipeOfferCard
+              actor={{
+                uid,
+                // Member doc, not the User: the rules reject a mismatched actorName, and the
+                // old `?? ''` fallback could even publish a nameless recipe. See auth-context.
+                name: memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member',
+                photoURL: user!.photoURL,
+              }}
+              offer={offer}
+              members={members}
+              onGone={() => setOfferGone(true)}
+            />
+          )}
+
+          {/* One card, not two stacked negations: when an invitation above is showing and
+              the ask ladder only has its floor to offer, "nothing of yours" + "nothing needs
+              you" reads like the product shrugging twice. The invitation wins the slot. */}
+          {!(
+            !posted &&
+            linkReady &&
+            (link === null || link?.status === 'declined') &&
+            ask.kind === 'nothing'
+          ) && <StandingAsk ask={ask} uid={uid} ready={ready} intro={helperIntro} onError={setError} />}
+        </div>
+
+        <div className="mt-12">
 
         <CohortWeek
           events={events}
@@ -229,6 +236,7 @@ function HomeView() {
           uid={uid}
           onError={setError}
         />
+        </div>
       </div>
     </>
   );
@@ -395,7 +403,7 @@ function PostedRow({ event, onError }: { event: PulseEvent; onError: (m: string 
 
   return (
     <section
-      className={`mb-6 rounded-lg border p-4 ${
+      className={`rounded-lg border p-4 ${
         pending || firstEver ? 'border-emerald-500/40 bg-zinc-900' : 'border-zinc-800 bg-zinc-900'
       }`}
     >
@@ -536,7 +544,7 @@ function DecideCard({ uid, onError }: { uid: string; onError: (m: string | null)
   };
 
   return (
-    <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
       <h2 className="text-base text-zinc-100">One decision is waiting on you.</h2>
       <p className="mt-1 text-sm text-zinc-400">
         Should Pulse run your board — move cards, post what you shipped? You left before
@@ -563,7 +571,7 @@ function DecideCard({ uid, onError }: { uid: string; onError: (m: string | null)
 
 function NothingOfYours() {
   return (
-    <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
       <h2 className="text-base text-zinc-100">Your board is live. Pulse just can&rsquo;t see you yet.</h2>
       <p className="mt-1 text-sm text-zinc-400">
         Connect GitHub and your cards start moving themselves. Or run the whole thing by
@@ -671,14 +679,14 @@ function StandingAsk({
 }) {
   if (!ready) {
     return (
-      <section className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
         <p className="text-sm text-zinc-400">Looking for the one thing that needs you…</p>
       </section>
     );
   }
 
   return (
-    <section className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
       <AskBody ask={ask} uid={uid} intro={intro} onError={onError} />
     </section>
   );
@@ -955,26 +963,8 @@ function PulseBrief({
   ].filter(Boolean);
 
   return (
-    <div className="pulse-row-in mb-8">
-      {/* Pulse speaks first — the model-written brief, in its own voice. */}
-      <div className="mb-6 flex items-start gap-3">
-        <span
-          aria-hidden
-          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-medium text-emerald-950"
-        >
-          P
-        </span>
-        {brief.text && (
-          <p
-            className="text-lg leading-snug text-zinc-100"
-            style={{ fontFamily: 'var(--font-voice, Georgia, serif)' }}
-          >
-            {brief.text}
-          </p>
-        )}
-      </div>
-
-      {/* The cohort's momentum — one element, three lenses, collective and never ranked. */}
+    <div className="pulse-row-in">
+      {/* Momentum leads — the cohort's pulse is the first thing, collective and never ranked. */}
       <Momentum
         data={{
           shipsByDay: s.shipsByDay,
@@ -985,12 +975,32 @@ function PulseBrief({
         }}
       />
 
-      {yours.length > 0 && (
-        <p className="mt-4 text-xs text-zinc-400">
-          your part <span className="text-zinc-500">&middot; only you see this</span> —{' '}
-          {yours.join(' · ')}
-        </p>
-      )}
+      {/* One Pulse voice — the model-written brief. The momentum's own caption was removed so
+          this reads as the single narration, not a second one. */}
+      <div className="mt-6 flex items-start gap-3">
+        <span
+          aria-hidden
+          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-medium text-emerald-950"
+        >
+          P
+        </span>
+        <div>
+          {brief.text && (
+            <p
+              className="text-lg leading-snug text-zinc-100"
+              style={{ fontFamily: 'var(--font-voice, Georgia, serif)' }}
+            >
+              {brief.text}
+            </p>
+          )}
+          {yours.length > 0 && (
+            <p className="mt-1.5 text-xs text-zinc-500">
+              your part <span className="text-zinc-600">&middot; only you see this</span> —{' '}
+              {yours.join(' · ')}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

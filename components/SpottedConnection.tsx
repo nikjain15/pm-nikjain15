@@ -50,7 +50,7 @@ export function SpottedConnection({
   };
 
   return (
-    <div className="pulse-row-in mb-8 border-l-2 border-sky-500/60 pl-3.5">
+    <div className="pulse-row-in border-l-2 border-sky-500/60 pl-3.5">
       <div className="mb-1.5 flex items-center gap-1.5 text-xs text-sky-400">
         <span aria-hidden>◇</span>
         <span>Pulse spotted a connection &middot; from public work</span>

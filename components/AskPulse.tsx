@@ -129,7 +129,7 @@ export function AskPulse({
 
   return (
     <>
-    <section className="mt-8">
+    <section>
       <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
         <span aria-hidden className="text-sm text-zinc-500">
           ask
