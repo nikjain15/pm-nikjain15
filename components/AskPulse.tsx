@@ -120,47 +120,61 @@ export function AskPulse({
         </button>
       </div>
 
+      {/* Say why send is disabled, so it never reads as broken. */}
+      {!ready && phase === 'idle' && (
+        <p className="mt-2 text-xs text-zinc-500">Loading your board…</p>
+      )}
+
+      {/* Thinking — a visible, moving indicator, not a faint line. The model call is a couple
+          of seconds; the user should see Pulse working, never a dead input. */}
       {phase === 'planning' && (
-        <p className="pulse-row-in mt-3 text-sm text-zinc-400">Pulse is reading your board…</p>
+        <div className="pulse-row-in mt-3 flex items-center gap-2.5 rounded-lg bg-zinc-900 px-3 py-2.5">
+          <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 motion-safe:animate-pulse" />
+          <span className="text-sm text-zinc-300">Pulse is working out what you need…</span>
+        </div>
       )}
 
       {(phase === 'running' || phase === 'done') && steps.length > 0 && (
-        <div className="mt-3 flex flex-col gap-1.5">
-          {steps.map((s) => (
-            <div
-              key={s.id}
-              className="pulse-row-in flex items-center gap-3 rounded-lg bg-zinc-900 px-3 py-2 text-sm"
-            >
-              <span
-                aria-hidden
-                className={
-                  s.state === 'running'
-                    ? 'text-zinc-500'
-                    : s.state === 'undone'
-                      ? 'text-zinc-600'
-                      : 'text-emerald-400'
-                }
+        <div className="mt-3">
+          <p className="mb-2 text-xs text-zinc-400">
+            {phase === 'running'
+              ? `Pulse is on it — ${steps.filter((s) => s.state !== 'running').length} of ${steps.length} done`
+              : 'Done. Here’s what Pulse did:'}
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {steps.map((s) => (
+              <div
+                key={s.id}
+                className="pulse-row-in flex items-center gap-3 rounded-lg bg-zinc-900 px-3 py-2 text-sm"
               >
-                {s.state === 'running' ? '…' : s.state === 'undone' ? '—' : '✓'}
-              </span>
-              <span className={`flex-1 ${s.state === 'undone' ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
-                {s.label}
-                {s.detail && <span className="text-zinc-500"> · {s.detail}</span>}
-              </span>
-              {s.undo && s.state === 'done' && (
-                <button
-                  onClick={() => void undoStep(s.id)}
-                  className="min-h-11 text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-300"
-                >
-                  undo
-                </button>
-              )}
-            </div>
-          ))}
+                <span aria-hidden className="flex h-4 w-4 shrink-0 items-center justify-center">
+                  {s.state === 'running' ? (
+                    <span className="h-3.5 w-3.5 rounded-full border-2 border-zinc-700 border-t-emerald-400 motion-safe:animate-spin" />
+                  ) : s.state === 'undone' ? (
+                    <span className="text-zinc-600">—</span>
+                  ) : (
+                    <span className="text-emerald-400">✓</span>
+                  )}
+                </span>
+                <span className={`flex-1 ${s.state === 'undone' ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                  {s.label}
+                  {s.detail && <span className="text-zinc-500"> · {s.detail}</span>}
+                </span>
+                {s.undo && s.state === 'done' && (
+                  <button
+                    onClick={() => void undoStep(s.id)}
+                    className="min-h-11 text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-300"
+                  >
+                    undo
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
           {phase === 'done' && (
             <button
               onClick={reset}
-              className="mt-1 self-start text-xs text-zinc-500 underline underline-offset-2 hover:text-zinc-400"
+              className="mt-2 text-xs text-zinc-500 underline underline-offset-2 hover:text-zinc-400"
             >
               clear
             </button>
@@ -168,7 +182,12 @@ export function AskPulse({
         </div>
       )}
 
-      {phase === 'degraded' && note && <p className="pulse-row-in mt-3 text-sm text-zinc-400">{note}</p>}
+      {/* Couldn't-plan / nothing-to-do — a clear card, not a line that's easy to miss. */}
+      {phase === 'degraded' && note && (
+        <div className="pulse-row-in mt-3 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-300">
+          {note}
+        </div>
+      )}
     </section>
 
     {recipeDraft && (

@@ -937,15 +937,18 @@ function YourPart({ events, uid }: { events: PulseEvent[]; uid: string }) {
 
   if (stat.shipped === 0 && stat.unstuck === 0 && stat.kudos === 0) return null;
 
+  // One quiet line, not a second grid of tiles — your part is personal and secondary, so it
+  // shouldn't weigh as much as the cohort's. Only-you, never a rank.
+  const parts = [
+    stat.shipped > 0 && `shipped ${stat.shipped}`,
+    stat.unstuck > 0 && `unstuck ${stat.unstuck}`,
+    stat.kudos > 0 && `${stat.kudos} kudos`,
+  ].filter(Boolean);
+
   return (
-    <div className="pulse-row-in mt-4">
-      <p className="text-xs text-zinc-400">your part — only you see this</p>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        <Tile n={stat.shipped} label="you shipped" />
-        <Tile n={stat.unstuck} label="people you unstuck" />
-        <Tile n={stat.kudos} label="kudos you got" />
-      </div>
-    </div>
+    <p className="pulse-row-in mt-3 text-xs text-zinc-400">
+      your part <span className="text-zinc-500">· only you see this</span> — {parts.join(' · ')}
+    </p>
   );
 }
 
