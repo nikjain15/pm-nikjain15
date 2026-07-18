@@ -847,6 +847,26 @@ function WeekTogether({ events }: { events: PulseEvent[] }) {
     return { shipped, banked, unstuck, people: shippers.size };
   }, [events]);
 
+  // The cohort's ship streak — consecutive days ending now that had a ship. Collective by
+  // construction (a day is the cohort's, never a person's), so it can motivate without
+  // singling anyone out or shaming a quiet day. Read from the same in-memory feed.
+  const streak = useMemo(() => {
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const shipDays = new Set<number>();
+    for (const e of events) {
+      if (e.kind !== 'task_shipped') continue;
+      const at = e.createdAt.toDate();
+      at.setHours(0, 0, 0, 0);
+      const daysAgo = Math.round((midnight.getTime() - at.getTime()) / 86_400_000);
+      if (daysAgo >= 0 && daysAgo <= 30) shipDays.add(daysAgo);
+    }
+    const todayShipped = shipDays.has(0);
+    let n = 0;
+    for (let d = todayShipped ? 0 : 1; shipDays.has(d); d++) n += 1;
+    return { n, todayShipped };
+  }, [events]);
+
   // A genuinely quiet week is one honest line, not three zeroes dressed as a dashboard.
   if (stat.shipped === 0 && stat.banked === 0 && stat.unstuck === 0) {
     return (
@@ -866,7 +886,13 @@ function WeekTogether({ events }: { events: PulseEvent[] }) {
 
   return (
     <div className="pulse-row-in mt-3">
-      <p className="text-sm text-zinc-200">{hero}</p>
+      {streak.n >= 2 && (
+        <p className="text-sm text-emerald-400">
+          The cohort shipped {streak.n} days straight
+          {!streak.todayShipped && <span className="text-zinc-400"> · keep it alive today</span>}
+        </p>
+      )}
+      <p className={`text-sm text-zinc-200 ${streak.n >= 2 ? 'mt-1' : ''}`}>{hero}</p>
       <div className="mt-2 grid grid-cols-3 gap-2">
         <Tile n={stat.shipped} label="things shipped" />
         <Tile n={stat.banked} label="things the cohort figured out" />
@@ -883,6 +909,42 @@ function Tile({ n, label }: { n: number; label: string }) {
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
       <div className="text-xl font-medium tabular-nums text-zinc-100">{n}</div>
       <div className="mt-0.5 text-xs leading-snug text-zinc-400">{label}</div>
+    </div>
+  );
+}
+
+/**
+ * Your part — YOUR own progress, shown only to you. Never a rank, never compared: the label
+ * literally says "only you see this", and a peer's numbers are never on screen. This is the
+ * one place personal numbers are allowed precisely because they are private and about
+ * contribution, not standing — "you unstuck 2 people" motivates generosity, the value the
+ * product rewards. Read from the in-memory feed like everything else; nothing until you've
+ * done something, so it never nags an empty account.
+ */
+function YourPart({ events, uid }: { events: PulseEvent[]; uid: string }) {
+  const stat = useMemo(() => {
+    let shipped = 0;
+    let unstuck = 0;
+    let kudos = 0;
+    for (const e of events) {
+      if (e.actorUid !== uid) continue;
+      if (e.kind === 'task_shipped') shipped += 1;
+      else if (e.kind === 'intro_made') unstuck += 1;
+      kudos += e.kudos.length;
+    }
+    return { shipped, unstuck, kudos };
+  }, [events, uid]);
+
+  if (stat.shipped === 0 && stat.unstuck === 0 && stat.kudos === 0) return null;
+
+  return (
+    <div className="pulse-row-in mt-4">
+      <p className="text-xs text-zinc-400">your part — only you see this</p>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <Tile n={stat.shipped} label="you shipped" />
+        <Tile n={stat.unstuck} label="people you unstuck" />
+        <Tile n={stat.kudos} label="kudos you got" />
+      </div>
     </div>
   );
 }
@@ -918,6 +980,8 @@ function CohortWeek({
       <h2 className="text-xs text-zinc-400">The cohort&rsquo;s week</h2>
 
       <WeekTogether events={events} />
+
+      <YourPart events={events} uid={uid} />
 
       <PulseStrip events={events} />
 
