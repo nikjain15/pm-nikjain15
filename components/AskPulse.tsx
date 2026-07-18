@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAskPulse } from '@/lib/use-ask-pulse';
 import type { ExtractionResult } from '@/app/api/extract-recipe/route';
 import { RecipeModal, type RecipeDraft } from '@/components/RecipeModal';
@@ -88,11 +88,44 @@ export function AskPulse({
   const busy = phase === 'planning' || phase === 'running';
   const blocked = busy || !ready;
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  // A "why nothing happened" line. The single worst outcome for an agent is a send that
+  // vanishes with no trace — it reads as broken. Every early return from submit() now leaves
+  // a word behind instead of silence.
+  const [hint, setHint] = useState<string | null>(null);
+
   const submit = () => {
     const utterance = text.trim();
-    if (!utterance || blocked) return;
+    if (busy) return; // the spinner is already the feedback
+    if (!utterance) {
+      // Clicked send (or a starter) with an empty box — point them at the box, don't no-op.
+      setHint('Tell me what to do — like “add a task to fix the login bug”.');
+      inputRef.current?.focus();
+      return;
+    }
+    if (!ready) {
+      // The board hasn't loaded yet, so acting would move or miss cards. Say so, out loud,
+      // instead of swallowing the send (the old silent return read as "nothing happened").
+      setHint('One second — I’m still reading your board. Try that again in a moment.');
+      return;
+    }
+    setHint(null);
     setText('');
     void run(utterance);
+  };
+
+  // Starters prefill a working prompt AND focus the box with the cursor at the end, so it's
+  // obvious the next move is yours — clicking one and seeing nothing act was a big part of
+  // "the agent does nothing".
+  const startWith = (prefill: string) => {
+    setHint(null);
+    setText(prefill);
+    const el = inputRef.current;
+    if (el) {
+      el.focus();
+      // After React sets the value, drop the caret at the end.
+      requestAnimationFrame(() => el.setSelectionRange(prefill.length, prefill.length));
+    }
   };
 
   return (
@@ -103,31 +136,45 @@ export function AskPulse({
           ask
         </span>
         <input
+          ref={inputRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (hint) setHint(null);
+          }}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          disabled={blocked}
+          // Not disabled while the board loads — a disabled box that silently ignores you is
+          // the same "nothing happened". Stay typable; submit() explains if it can't act yet.
+          disabled={busy}
           placeholder="tell Pulse what to do — make a task, move a card, start a project"
           aria-label="Ask Pulse to do something on your board"
           className="min-h-11 flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
         />
         <button
           onClick={submit}
-          disabled={blocked || text.trim().length === 0}
+          // Enabled while the board loads, only disabled mid-run: clicking send before the
+          // board is ready now explains itself (submit sets a hint) instead of being a dead,
+          // greyed-out control the user reads as "nothing happened".
+          disabled={busy || text.trim().length === 0}
           className="min-h-11 rounded px-2 text-sm text-zinc-300 transition-colors hover:text-white disabled:opacity-40"
         >
           {busy ? 'working…' : 'send'}
         </button>
       </div>
 
-      {/* Say why send is disabled, so it never reads as broken. */}
-      {!ready && phase === 'idle' && (
-        <p className="mt-2 text-xs text-zinc-500">Loading your board…</p>
+      {/* The "why nothing happened" line — a blocked or empty send always leaves a word. */}
+      {hint && phase !== 'planning' && phase !== 'running' && (
+        <p className="pulse-row-in mt-2 text-xs text-zinc-400">{hint}</p>
       )}
 
-      {/* Starters that pre-fill a working prompt — they guide toward what the agent can
-          actually do, rather than promise advice it doesn't give yet. */}
-      {ready && phase === 'idle' && (
+      {/* Still-loading note, only when there's no hint already speaking. */}
+      {!ready && phase === 'idle' && !hint && (
+        <p className="mt-2 text-xs text-zinc-500">Reading your board…</p>
+      )}
+
+      {/* Starters pre-fill a working prompt and focus the box, so the next move is obviously
+          yours — see startWith(). They guide toward what the agent can actually do. */}
+      {phase === 'idle' && (
         <div className="mt-2 flex flex-wrap gap-2">
           {(
             [
@@ -138,7 +185,7 @@ export function AskPulse({
           ).map(([label, prefill]) => (
             <button
               key={label}
-              onClick={() => setText(prefill)}
+              onClick={() => startWith(prefill)}
               className="rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-300"
             >
               {label}
