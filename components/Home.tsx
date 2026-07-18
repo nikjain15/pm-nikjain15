@@ -190,6 +190,7 @@ function HomeView() {
           }}
           tasks={tasks}
           projects={projects}
+          ready={ready}
         />
       </div>
     </>

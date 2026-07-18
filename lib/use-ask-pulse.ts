@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import { Timestamp } from 'firebase/firestore';
 import { boardContext, type AgentAction } from './agent';
-import { createProject, createTask, deleteTask, setTaskStatus, updateProject } from './data';
+import { createProject, createTask, deleteTask, setTaskStatus, setTaskStuck, updateProject, updateTask } from './data';
 import type { Project, Task } from './types';
 
 /**
@@ -124,7 +124,7 @@ export function useAskPulse({ actor, tasks, projects }: { actor: Actor; tasks: T
               state: 'done',
               undo: async () => void (await deleteTask(taskId)),
             });
-          } else {
+          } else if (action.kind === 'set_task_status') {
             const task = tasks.find((t) => t.id === action.taskId);
             if (!task) continue;
             const prior = task.status;
@@ -134,6 +134,72 @@ export function useAskPulse({ actor, tasks, projects }: { actor: Actor; tasks: T
               label: `Moved ${action.title} → ${action.status}`,
               state: 'done',
               undo: async () => void (await setTaskStatus(actor, { ...task, status: action.status }, prior)),
+            });
+          } else if (action.kind === 'edit_task') {
+            const task = tasks.find((t) => t.id === action.taskId);
+            if (!task) continue;
+            const priorTitle = task.title;
+            const priorDue = task.dueDate;
+            const patch: { title?: string; dueDate?: Timestamp | null } = {};
+            if (action.newTitle) patch.title = action.newTitle;
+            if (action.clearDue) patch.dueDate = null;
+            else if (action.dueDate) patch.dueDate = dueFrom(action.dueDate);
+            const id = add({ label: `Editing ${action.title}`, detail: null, state: 'running', undo: null });
+            await updateTask(action.taskId, patch);
+            settle(id, {
+              label: action.newTitle ? `Renamed ${priorTitle} → ${action.newTitle}` : `Updated ${action.title}`,
+              state: 'done',
+              undo: async () => void (await updateTask(action.taskId, { title: priorTitle, dueDate: priorDue })),
+            });
+          } else if (action.kind === 'delete_task') {
+            const task = tasks.find((t) => t.id === action.taskId);
+            if (!task) continue;
+            const snapshot = task; // kept so undo can rebuild it (a new id, same content)
+            const id = add({ label: `Deleting ${action.title}`, detail: null, state: 'running', undo: null });
+            await deleteTask(action.taskId);
+            settle(id, {
+              label: `Deleted ${action.title}`,
+              state: 'done',
+              undo: async () =>
+                void (await createTask(actor, {
+                  projectId: snapshot.projectId,
+                  title: snapshot.title,
+                  description: snapshot.description,
+                  assigneeUid: snapshot.assigneeUid,
+                  dueDate: snapshot.dueDate,
+                  status: snapshot.status,
+                })),
+            });
+          } else if (action.kind === 'edit_project') {
+            const priorName = action.name;
+            const patch: { name?: string; archived?: boolean } = {};
+            if (action.newName) patch.name = action.newName;
+            if (action.archive) patch.archived = true;
+            const id = add({ label: `Updating ${action.name}`, detail: null, state: 'running', undo: null });
+            await updateProject(action.projectId, patch);
+            settle(id, {
+              label: action.archive
+                ? `Archived ${priorName}`
+                : `Renamed ${priorName} → ${action.newName ?? priorName}`,
+              state: 'done',
+              // The project came from the board unarchived, so undo restores that and the name.
+              undo: async () => void (await updateProject(action.projectId, { name: priorName, archived: false })),
+            });
+          } else {
+            const task = tasks.find((t) => t.id === action.taskId);
+            if (!task) continue;
+            const prior = !!task.stuckSince;
+            const id = add({
+              label: action.stuck ? `Asking for help on ${action.title}` : `Clearing the stuck flag on ${action.title}`,
+              detail: null,
+              state: 'running',
+              undo: null,
+            });
+            await setTaskStuck(action.taskId, action.stuck);
+            settle(id, {
+              label: action.stuck ? `Asked for help on ${action.title}` : `Cleared the stuck flag on ${action.title}`,
+              state: 'done',
+              undo: async () => void (await setTaskStuck(action.taskId, prior)),
             });
           }
         } catch {

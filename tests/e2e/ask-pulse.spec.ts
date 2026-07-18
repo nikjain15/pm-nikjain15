@@ -100,3 +100,49 @@ test('Ask Pulse executes a plan on your board, and undo reverses it', async ({ p
     })
     .toBe(false);
 });
+
+test('Ask Pulse can edit, mark-stuck, and delete your own tasks', async ({ page }) => {
+  const email = uniqueEmail('agent2');
+  await signUp(page, 'Nik Jain', email);
+  const uid = await uidForEmail(page, email);
+
+  const proj = `p_${Date.now()}`;
+  const keep = `keep_${Date.now()}`;
+  const gone = `gone_${Date.now()}`;
+  await seedDoc(page, 'projects', proj, {
+    name: s('Website'), description: s(''), ownerUid: s(uid), archived: { booleanValue: false },
+    createdAt: { timestampValue: new Date().toISOString().replace(/\.\d+/, '') },
+  });
+  for (const [id, title] of [[keep, 'Old title'], [gone, 'Throwaway']] as const) {
+    await seedDoc(page, 'tasks', id, {
+      projectId: s(proj), title: s(title), description: s(''), status: s('todo'),
+      assigneeUid: s(uid), creatorUid: s(uid), dueDate: nul, completedAt: nul,
+      createdAt: { timestampValue: new Date().toISOString().replace(/\.\d+/, '') },
+      source: s('manual'), evidence: nul, branch: nul, stuckSince: nul,
+    });
+  }
+
+  await page.route('**/api/ask-pulse', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ actions: [
+      { kind: 'edit_task', taskId: keep, title: 'Old title', newTitle: 'New title', dueDate: null, clearDue: false },
+      { kind: 'mark_stuck', taskId: keep, title: 'New title', stuck: true },
+      { kind: 'delete_task', taskId: gone, title: 'Throwaway' },
+    ], dropped: [] }) })
+  );
+
+  await page.goto('/');
+  await page.getByLabel('Ask Pulse to do something on your board').fill('rename old title, ask for help on it, and delete the throwaway');
+  await page.getByRole('button', { name: 'send' }).click();
+
+  await expect(page.getByText('Renamed Old title → New title')).toBeVisible();
+  await expect(page.getByText('Asked for help on New title')).toBeVisible();
+  await expect(page.getByText('Deleted Throwaway')).toBeVisible();
+
+  const kept = await page.request.get(`${EMULATOR}/tasks/${keep}`, { headers: { Authorization: 'Bearer owner' } });
+  const keptFields = ((await kept.json()) as { fields: { title: { stringValue: string }; stuckSince?: unknown } }).fields;
+  expect(keptFields.title.stringValue).toBe('New title');
+  expect(keptFields.stuckSince).toBeTruthy();
+
+  const deleted = await page.request.get(`${EMULATOR}/tasks/${gone}`, { headers: { Authorization: 'Bearer owner' } });
+  expect(deleted.status()).toBe(404);
+});

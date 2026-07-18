@@ -14,15 +14,18 @@ type Actor = { uid: string; name: string; photoURL: string | null };
  * cohort (banking a recipe) is not in this slice and will pause when it lands. The input is
  * the only affordance; a tool nobody typed into does nothing, so it never nags.
  */
-export function AskPulse({ actor, tasks, projects }: { actor: Actor; tasks: Task[]; projects: Project[] }) {
+export function AskPulse({ actor, tasks, projects, ready }: { actor: Actor; tasks: Task[]; projects: Project[]; ready: boolean }) {
   const { phase, steps, note, run, undoStep, reset } = useAskPulse({ actor, tasks, projects });
   const [text, setText] = useState('');
 
+  // Not until the board has loaded: acting on a board Pulse hasn't read yet would move or
+  // miss cards silently. `ready` is the cohort listener's first snapshot.
   const busy = phase === 'planning' || phase === 'running';
+  const blocked = busy || !ready;
 
   const submit = () => {
     const utterance = text.trim();
-    if (!utterance || busy) return;
+    if (!utterance || blocked) return;
     setText('');
     void run(utterance);
   };
@@ -37,14 +40,14 @@ export function AskPulse({ actor, tasks, projects }: { actor: Actor; tasks: Task
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          disabled={busy}
+          disabled={blocked}
           placeholder="tell Pulse what to do — make a task, move a card, start a project"
           aria-label="Ask Pulse to do something on your board"
           className="min-h-11 flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
         />
         <button
           onClick={submit}
-          disabled={busy || text.trim().length === 0}
+          disabled={blocked || text.trim().length === 0}
           className="min-h-11 rounded px-2 text-sm text-zinc-300 transition-colors hover:text-white disabled:opacity-40"
         >
           {busy ? 'working…' : 'send'}

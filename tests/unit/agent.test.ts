@@ -77,6 +77,51 @@ describe('validatePlan — the injection backstop', () => {
   });
 });
 
+describe('validatePlan — the extended own-board actions', () => {
+  it('renames the user own task, and clears a due date on "none"', () => {
+    const { actions } = validatePlan(
+      [{ name: 'edit_task', input: { task: 'Fix CORS', new_title: 'Fix CORS preflight', due_date: 'none' } }],
+      ctx
+    );
+    expect(actions).toEqual([
+      { kind: 'edit_task', taskId: 't_cors', title: 'Fix CORS', newTitle: 'Fix CORS preflight', dueDate: null, clearDue: true },
+    ]);
+  });
+
+  it('drops an edit with nothing to change', () => {
+    expect(validatePlan([{ name: 'edit_task', input: { task: 'Fix CORS' } }], ctx).actions).toEqual([]);
+  });
+
+  it("drops an edit/delete/stuck for a task that isn't the user's own", () => {
+    for (const name of ['edit_task', 'delete_task', 'mark_stuck']) {
+      const { actions, dropped } = validatePlan([{ name, input: { task: "Priya's card", new_title: 'x', stuck: true } }], ctx);
+      expect(actions, name).toEqual([]);
+      expect(dropped, name).toHaveLength(1);
+    }
+  });
+
+  it('deletes the user own task', () => {
+    expect(validatePlan([{ name: 'delete_task', input: { task: 'Login screen' } }], ctx).actions).toEqual([
+      { kind: 'delete_task', taskId: 't_login', title: 'Login screen' },
+    ]);
+  });
+
+  it('renames and archives an existing project, drops a project edit with nothing to change', () => {
+    expect(validatePlan([{ name: 'edit_project', input: { project: 'Website', archive: true } }], ctx).actions).toEqual([
+      { kind: 'edit_project', projectId: 'p_web', name: 'Website', newName: null, archive: true },
+    ]);
+    expect(validatePlan([{ name: 'edit_project', input: { project: 'Website' } }], ctx).actions).toEqual([]);
+    expect(validatePlan([{ name: 'edit_project', input: { project: 'Ghost', new_name: 'x' } }], ctx).actions).toEqual([]);
+  });
+
+  it('marks the user own task stuck (default true) and can clear it', () => {
+    expect(validatePlan([{ name: 'mark_stuck', input: { task: 'Fix CORS', stuck: true } }], ctx).actions).toEqual([
+      { kind: 'mark_stuck', taskId: 't_cors', title: 'Fix CORS', stuck: true },
+    ]);
+    expect(validatePlan([{ name: 'mark_stuck', input: { task: 'Fix CORS', stuck: false } }], ctx).actions[0]).toMatchObject({ stuck: false });
+  });
+});
+
 describe('boardContext — only the user own items, no peers, no timestamps', () => {
   const base = { projectId: 'p1', description: '', createdAt: null as never, completedAt: null, source: 'manual' as const, evidence: null, branch: null, stuckSince: null, dueDate: null };
   const tasks: Task[] = [

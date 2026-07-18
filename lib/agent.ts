@@ -19,7 +19,16 @@ import type { Status, Task, Project } from './types';
 export type AgentAction =
   | { kind: 'create_task'; title: string; projectId: string; status: Status; dueDate: string | null }
   | { kind: 'set_task_status'; taskId: string; status: Status; title: string }
-  | { kind: 'create_project'; name: string };
+  | { kind: 'create_project'; name: string }
+  // Edit one of the user's own tasks — a new title and/or a new due date. Status changes go
+  // through set_task_status (it is the only path that logs task_started / task_shipped).
+  | { kind: 'edit_task'; taskId: string; title: string; newTitle: string | null; dueDate: string | null; clearDue: boolean }
+  | { kind: 'delete_task'; taskId: string; title: string }
+  // Rename or archive one of the user's own projects. Nothing hard-deletes a project (§7).
+  | { kind: 'edit_project'; projectId: string; name: string; newName: string | null; archive: boolean }
+  // The assignee's own "I'm stuck" — on or off. Only ever the user's OWN task (the rules
+  // enforce it too: declaring a PEER stuck is exactly the claim the product refuses).
+  | { kind: 'mark_stuck'; taskId: string; title: string; stuck: boolean };
 
 /** What the model may reference — the user's OWN board, nothing else. Built server-side from
  * the caller's own tasks/projects so the model can resolve "the login task" to a real id it
@@ -68,6 +77,53 @@ export const AGENT_TOOLS = [
       type: 'object',
       properties: { name: { type: 'string', description: 'Project name.' } },
       required: ['name'],
+    },
+  },
+  {
+    name: 'edit_task',
+    description: "Rename one of the user's own tasks or change its due date. To move its status, use set_task_status instead.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'The exact current title of the task.' },
+        new_title: { type: 'string', description: 'A new title, if renaming.' },
+        due_date: { type: 'string', description: 'A new ISO date (YYYY-MM-DD), or "none" to clear it.' },
+      },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'delete_task',
+    description: "Delete one of the user's own tasks. Use only when the user clearly wants it gone.",
+    input_schema: {
+      type: 'object',
+      properties: { task: { type: 'string', description: 'The exact title of the task to delete.' } },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'edit_project',
+    description: "Rename or archive one of the user's own projects. Archiving hides it without deleting.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'The exact current name of the project.' },
+        new_name: { type: 'string', description: 'A new name, if renaming.' },
+        archive: { type: 'boolean', description: 'True to archive it.' },
+      },
+      required: ['project'],
+    },
+  },
+  {
+    name: 'mark_stuck',
+    description: "Flag one of the user's OWN tasks as stuck (asking for help), or clear that flag.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'The exact title of the user own task.' },
+        stuck: { type: 'boolean', description: 'True to ask for help, false to withdraw.' },
+      },
+      required: ['task', 'stuck'],
     },
   },
 ] as const;
@@ -169,6 +225,63 @@ export function validatePlan(
         continue;
       }
       actions.push({ kind: 'set_task_status', taskId: task.id, status, title: task.title });
+      continue;
+    }
+
+    if (call.name === 'edit_task') {
+      const task = taskByTitle.get(typeof input.task === 'string' ? input.task.trim().toLowerCase() : '');
+      if (!task) {
+        dropped.push(`an edit for a task that isn't yours ("${input.task ?? ''}")`);
+        continue;
+      }
+      const newTitleRaw = typeof input.new_title === 'string' ? input.new_title.trim() : '';
+      const newTitle = newTitleRaw && newTitleRaw.length <= 120 ? newTitleRaw : null;
+      const dueRaw = typeof input.due_date === 'string' ? input.due_date.trim().toLowerCase() : '';
+      const clearDue = dueRaw === 'none' || dueRaw === 'clear';
+      const dueDate = clearDue ? null : cleanDate(input.due_date);
+      if (!newTitle && !clearDue && !dueDate) {
+        dropped.push('an edit with nothing to change');
+        continue;
+      }
+      actions.push({ kind: 'edit_task', taskId: task.id, title: task.title, newTitle, dueDate, clearDue });
+      continue;
+    }
+
+    if (call.name === 'delete_task') {
+      const task = taskByTitle.get(typeof input.task === 'string' ? input.task.trim().toLowerCase() : '');
+      if (!task) {
+        dropped.push(`a delete for a task that isn't yours ("${input.task ?? ''}")`);
+        continue;
+      }
+      actions.push({ kind: 'delete_task', taskId: task.id, title: task.title });
+      continue;
+    }
+
+    if (call.name === 'edit_project') {
+      const wantName = typeof input.project === 'string' ? input.project.trim().toLowerCase() : '';
+      const proj = ctx.projects.find((p) => p.name.trim().toLowerCase() === wantName);
+      if (!proj) {
+        dropped.push(`an edit for a project that doesn't exist ("${input.project ?? ''}")`);
+        continue;
+      }
+      const newNameRaw = typeof input.new_name === 'string' ? input.new_name.trim() : '';
+      const newName = newNameRaw && newNameRaw.length <= 80 ? newNameRaw : null;
+      const archive = input.archive === true;
+      if (!newName && !archive) {
+        dropped.push('a project edit with nothing to change');
+        continue;
+      }
+      actions.push({ kind: 'edit_project', projectId: proj.id, name: proj.name, newName, archive });
+      continue;
+    }
+
+    if (call.name === 'mark_stuck') {
+      const task = taskByTitle.get(typeof input.task === 'string' ? input.task.trim().toLowerCase() : '');
+      if (!task) {
+        dropped.push(`a stuck flag for a task that isn't yours ("${input.task ?? ''}")`);
+        continue;
+      }
+      actions.push({ kind: 'mark_stuck', taskId: task.id, title: task.title, stuck: input.stuck !== false });
       continue;
     }
 
