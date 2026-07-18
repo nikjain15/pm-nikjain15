@@ -19,8 +19,10 @@ import type { GitHubLink, Introduction, Member, PulseEvent, Recipe, Task } from 
 import { useCohort } from '@/lib/use-cohort';
 import { AskPulse } from './AskPulse';
 import { Momentum } from './Momentum';
+import { SpottedConnection } from './SpottedConnection';
 import { useRecipes } from '@/lib/use-recipes';
 import { useBrief } from '@/lib/use-brief';
+import { useConnection } from '@/lib/use-connection';
 import type { BriefFacts } from '@/lib/brief-fallback';
 
 /**
@@ -114,6 +116,20 @@ function HomeView() {
     [uid, tasks, projects, ready, helperIntro, stuckName]
   );
 
+  // "Pulse spotted a connection" — your own open work, matched against the cohort's PUBLIC
+  // PRs. Your handle (never guessed — from your member doc) keeps the match from suggesting
+  // you to yourself; your open task titles are the only thing of yours that leaves the page,
+  // and only a peer's public PR ever comes back.
+  const myHandle = useMemo(() => members.find((m) => m.uid === uid)?.handle ?? null, [members, uid]);
+  const myOpenTitles = useMemo(
+    () =>
+      tasks
+        .filter((t) => (t.creatorUid === uid || t.assigneeUid === uid) && t.status !== 'done')
+        .map((t) => t.title),
+    [tasks, uid]
+  );
+  const connection = useConnection({ handle: myHandle, workHints: myOpenTitles });
+
   // "That one took a while. Keep what worked?" — Layer 2's offer, for YOUR newest hard
   // ship only. `offerGone` exists because the dismissal lives in localStorage, which
   // isn't reactive — the card has to leave the screen the moment it's resolved, not on
@@ -148,6 +164,9 @@ function HomeView() {
           displayName={memberName ?? user!.displayName ?? user!.email?.split('@')[0] ?? 'member'}
           narrationOptIn={link?.narrationOptIn === true}
         />
+
+        {/* The one collaborative nudge — public facts only, your own Home, at most one. */}
+        {connection && <SpottedConnection connection={connection} members={members} />}
 
         {posted ? (
           <PostedRow event={posted} onError={setError} />

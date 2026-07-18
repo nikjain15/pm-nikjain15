@@ -19,13 +19,13 @@ export function useConnection({
   workHints: string[];
 }): Connection | null {
   const signature = useMemo(() => `${handle ?? ''}::${workHints.join('¦')}`, [handle, workHints]);
-  const [connection, setConnection] = useState<Connection | null>(null);
+  const active = workHints.length > 0;
+  const [fetched, setFetched] = useState<Connection | null>(null);
 
   useEffect(() => {
-    if (workHints.length === 0) {
-      setConnection(null);
-      return;
-    }
+    // No work to match on → don't fetch; the empty case is derived below, not set here (which
+    // keeps this effect free of a synchronous setState).
+    if (!active) return;
     let cancelled = false;
     (async () => {
       try {
@@ -36,7 +36,7 @@ export function useConnection({
         });
         if (res.ok) {
           const data = (await res.json()) as { connection: Connection | null };
-          if (!cancelled) setConnection(data.connection ?? null);
+          if (!cancelled) setFetched(data.connection ?? null);
         }
       } catch {
         // No connectivity, no suggestion — never an error on Home.
@@ -47,7 +47,9 @@ export function useConnection({
     };
     // signature captures handle + work; workHints identity is deliberately not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  }, [signature, active]);
 
-  return connection;
+  // With no work to match on, there is no suggestion — derived, so a cleared board shows
+  // nothing without a state write.
+  return active ? fetched : null;
 }
