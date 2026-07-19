@@ -115,13 +115,16 @@ export function AskPulse({
 
   const busy = phase === 'planning' || phase === 'running';
   const inputRef = useRef<HTMLInputElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   // A "why nothing happened" line — every early return from submit() leaves a word behind.
   const [hint, setHint] = useState<string | null>(null);
 
-  // Keep the newest turn in view as the thread grows.
+  // Keep the newest turn in view as the thread grows — but scroll ONLY the transcript container,
+  // never the page. scrollIntoView() used to bubble up and yank the whole window (and the sticky
+  // rail), so the user couldn't freely scroll; scoping it to this element keeps the page still.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [turns.length, steps.length, answer, phase]);
 
   const submit = () => {
@@ -167,7 +170,10 @@ export function AskPulse({
 
   return (
     <>
-      <section className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40">
+      {/* On desktop the panel is capped to the viewport (it lives in a sticky rail) so the composer
+          and newest reply are always reachable and the transcript scrolls WITHIN the panel, not the
+          page. On mobile it sits in normal flow and grows naturally. */}
+      <section className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40 lg:max-h-[calc(100vh-3rem)]">
         {/* Panel header — Pulse's own workspace. */}
         <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
           <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.15)]" />
@@ -211,8 +217,13 @@ export function AskPulse({
           <div className="border-b border-zinc-800 px-4 py-2 text-xs text-zinc-500">{dispatchNote}</div>
         )}
 
-        {/* The transcript — persisted history, then the live current turn. */}
-        <div className="flex max-h-[62vh] min-h-[200px] flex-col gap-4 overflow-y-auto px-4 py-4">
+        {/* The transcript — persisted history, then the live current turn. It is the only scroller:
+            capped on mobile, and flex-filling the capped panel on desktop (min-h-0 lets it shrink so
+            overflow scrolls here instead of pushing the composer off-screen). */}
+        <div
+          ref={scrollRef}
+          className="flex max-h-[62vh] min-h-[200px] flex-col gap-4 overflow-y-auto px-4 py-4 lg:max-h-none lg:min-h-0 lg:flex-1"
+        >
           {showEmpty && (
             <p className="text-sm text-zinc-500">
               Tell Pulse what to do — “move the login card to done”, “start a project called Marketing” —
@@ -299,8 +310,6 @@ export function AskPulse({
           {hint && phase !== 'planning' && phase !== 'running' && (
             <p className="pulse-row-in text-xs text-zinc-400">{hint}</p>
           )}
-
-          <div ref={bottomRef} />
         </div>
 
         {/* Composer. */}

@@ -119,20 +119,21 @@ export function useAskPulse({
           setPhase('degraded');
           let note: string;
           if (data.reason) {
-            note = "Pulse can't plan right now. The board still works by hand.";
+            note = "I can't think that through right now — but your board still works by hand, and I'll be back in a moment.";
           } else if (data.dropped && data.dropped.length > 0) {
-            // Say what it couldn't do, in the reason's own words, then how to fix it.
-            note = `I couldn't do that — ${data.dropped[0]}. Try being specific, like “add a task to fix the login bug”.`;
+            // Say what it couldn't do warmly, then a concrete way forward.
+            note = `I couldn't quite do that — ${data.dropped[0]}. Want to try it like “add a task to fix the login bug”?`;
           } else {
+            // Warm, capability-oriented help — never a cold "say it in plain words".
             note =
-              'Tell me what to do in plain words — like “add a task to fix the login bug”, “move the login card to done”, or “start a project called Marketing”.';
+              'Happy to help — I can add, move, and edit tasks and projects, tell you what to focus on, or hand work to Rally. What would you like to do?';
           }
           setNote(note);
           return note;
         }
       } catch {
         setPhase('degraded');
-        const note = "Pulse can't plan right now. The board still works by hand.";
+        const note = "I couldn't reach my thinking just now — give it another try in a moment. Your board still works by hand meanwhile.";
         setNote(note);
         return note;
       }

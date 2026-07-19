@@ -236,7 +236,7 @@ export const DRAFT_RECIPE_TOOL = {
 export const ANSWER_TOOL = {
   name: 'answer',
   description:
-    "Answer the user's question about their own board in one or two plain sentences, using only the facts in the context. Use this when the user is asking rather than commanding — 'what should I focus on?', 'what's left?', 'plan my week', 'am I behind on anything?'. Never invent tasks, projects, dates, or names. Do NOT use this to perform actions — use the action tools for those.",
+    "Reply to the user in one or two warm, plain sentences. Use it to answer a question about their own board (using only the facts in the context), OR to explain what you can do / respond to a greeting, OR to ask ONE friendly clarifying question when a command is incomplete (e.g. they just said 'move'). This is your catch-all so you never go silent. Never invent tasks, projects, dates, or names. Do NOT use this to perform board actions — use the action tools for those.",
   input_schema: {
     type: 'object',
     properties: { text: { type: 'string', description: 'One or two plain sentences. No markdown, no lists.' } },
