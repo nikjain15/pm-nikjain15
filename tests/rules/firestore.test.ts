@@ -460,6 +460,29 @@ describe('recipes — you cannot rank yourself', () => {
   it('lets a member publish a recipe under their own name', async () => {
     await assertSucceeds(addDoc(collection(as(env, ALICE), 'recipes'), recipe(ALICE)));
   });
+
+  // publicThanksUids — the explicit consent the broker gates its public intro_made post on.
+  // Same self-only shape as unstuckUids; kept separate so the private credit never outs the quiet.
+  it('lets a helped member opt THEMSELVES into a public thank-you', async () => {
+    await seed(env, path, recipe(BOB, { unstuckUids: [ALICE], publicThanksUids: [] }));
+    await assertSucceeds(updateDoc(doc(as(env, ALICE), path), { publicThanksUids: [ALICE] }));
+  });
+
+  it('denies opting SOMEONE ELSE into a public thank-you (no consent-by-proxy)', async () => {
+    await seed(env, path, recipe(BOB, { publicThanksUids: [] }));
+    await assertFails(updateDoc(doc(as(env, ALICE), path), { publicThanksUids: ['uid_carol'] }));
+  });
+
+  it('denies the author staging a public thank-you to themselves', async () => {
+    await seed(env, path, recipe(ALICE, { publicThanksUids: [] }));
+    await assertFails(updateDoc(doc(as(env, ALICE), path), { publicThanksUids: [ALICE] }));
+  });
+
+  it('denies a recipe created with public thanks already set', async () => {
+    await assertFails(
+      addDoc(collection(as(env, ALICE), 'recipes'), recipe(ALICE, { publicThanksUids: [BOB] })),
+    );
+  });
 });
 
 /* ==========================================================================

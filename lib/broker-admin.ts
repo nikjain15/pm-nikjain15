@@ -238,8 +238,13 @@ export async function publishIntroMade(db: Firestore): Promise<number> {
     if (!intro.recipeId) continue;
 
     const recipe = await db.collection('recipes').doc(intro.recipeId).get();
-    const unstuck = (recipe.data()?.unstuckUids ?? []) as string[];
-    if (!unstuck.includes(intro.stuckUid)) continue;
+    // The gate is EXPLICIT public-thanks consent, not the private "this unstuck me" credit. Marking
+    // a recipe unstuck helps the author and the broker privately; it must never on its own name the
+    // stuck person to all 64 members. Only when the stuck person deliberately opted into a public
+    // thank-you (thankPublicly) do we publish the one `intro_made` post — so a quiet member is never
+    // outed as having-been-stuck without knowingly choosing it ("never punish the quiet").
+    const publicThanks = (recipe.data()?.publicThanksUids ?? []) as string[];
+    if (!publicThanks.includes(intro.stuckUid)) continue;
 
     const helper = members.get(intro.helperUid);
     const stuck = members.get(intro.stuckUid);

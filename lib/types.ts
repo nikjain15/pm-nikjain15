@@ -165,8 +165,17 @@ export type Recipe = {
   authorUid: string;
   taskId: string | null;
   turns: number;
-  /** The only ranking in the product: people unstuck, which measures generosity. */
+  /** The only ranking in the product: people unstuck, which measures generosity. Private-ish:
+   *  the author sees it; it is NOT a public naming of who was stuck. */
   unstuckUids: string[];
+  /**
+   * Explicit, separate consent to a PUBLIC thank-you. Marking a recipe "unstuck me" credits the
+   * author privately; it must never on its own name the stuck person to the cohort. The one public
+   * `intro_made` post ("{helper} unstuck {you} on …") is only published when the stuck person opts
+   * into it here — a deliberate, disclosed choice, so "never punish the quiet" holds. Absent on old
+   * docs → treated as empty (no consent).
+   */
+  publicThanksUids?: string[];
   createdAt: Timestamp;
 };
 

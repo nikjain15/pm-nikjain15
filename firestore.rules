@@ -276,13 +276,14 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn()
                     && isSelf(request.resource.data.authorUid)
-                    && request.resource.data.unstuckUids.size() == 0;
+                    && request.resource.data.unstuckUids.size() == 0
+                    && request.resource.data.get('publicThanksUids', []).size() == 0;
       allow update: if signedIn()
                     && (
                       // author editing their own recipe (but not inflating its rank)
                       (isSelf(resource.data.authorUid)
                         && request.resource.data.authorUid == resource.data.authorUid
-                        && !changed().hasAny(['unstuckUids']))
+                        && !changed().hasAny(['unstuckUids', 'publicThanksUids']))
                       ||
                       // anyone ELSE marking themselves unstuck by it.
                       //
@@ -295,6 +296,15 @@ service cloud.firestore {
                       (!isSelf(resource.data.authorUid)
                         && changed().hasOnly(['unstuckUids'])
                         && togglesOnlySelf(resource.data.unstuckUids, request.resource.data.unstuckUids))
+                      ||
+                      // anyone ELSE opting into a PUBLIC thank-you naming themselves. This is the
+                      // separate, explicit consent the broker gates its one public intro_made post
+                      // on — kept apart from the private unstuck credit so a quiet member is never
+                      // named to the cohort without deliberately choosing it. Same self-only
+                      // constraint; the author can't stage a thank-you to themselves.
+                      (!isSelf(resource.data.authorUid)
+                        && changed().hasOnly(['publicThanksUids'])
+                        && togglesOnlySelf(resource.data.get('publicThanksUids', []), request.resource.data.publicThanksUids))
                     );
       allow delete: if isSelf(resource.data.authorUid);
     }
