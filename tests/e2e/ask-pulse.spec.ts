@@ -11,7 +11,7 @@ import { signUp, uniqueEmail } from './helpers';
  * planning is exercised in prod, where the key lives (same split as narration).
  */
 
-const EMULATOR = 'http://127.0.0.1:8080/v1/projects/demo-pulse/databases/(default)/documents';
+const EMULATOR = `http://127.0.0.1:${process.env.FIRESTORE_EMULATOR_PORT ?? '8080'}/v1/projects/demo-pulse/databases/(default)/documents`;
 
 async function uidForEmail(page: Page, email: string): Promise<string> {
   const res = await page.request.get(`${EMULATOR}/members?pageSize=300`, {

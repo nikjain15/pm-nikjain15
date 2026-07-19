@@ -21,7 +21,7 @@ import { signUp, signOut, uniqueEmail, uniqueName } from './helpers';
  * introductions — which is itself the point, and stays covered in tests/rules.
  */
 
-const EMULATOR = 'http://127.0.0.1:8080/v1/projects/demo-pulse/databases/(default)/documents';
+const EMULATOR = `http://127.0.0.1:${process.env.FIRESTORE_EMULATOR_PORT ?? '8080'}/v1/projects/demo-pulse/databases/(default)/documents`;
 
 test.describe.configure({ timeout: 120_000 });
 

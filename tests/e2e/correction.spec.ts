@@ -18,7 +18,7 @@ import { signUp, uniqueEmail, uniqueName } from './helpers';
  * rules — which is the half that was never watched and the half that can break.
  */
 
-const EMULATOR = 'http://127.0.0.1:8080/v1/projects/demo-pulse/databases/(default)/documents';
+const EMULATOR = `http://127.0.0.1:${process.env.FIRESTORE_EMULATOR_PORT ?? '8080'}/v1/projects/demo-pulse/databases/(default)/documents`;
 
 /**
  * The receipt region, scoped.
