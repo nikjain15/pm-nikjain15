@@ -55,14 +55,21 @@ export async function readSharedActivity(db: Firestore, handle: string, limit = 
 }
 
 /**
- * Erase everything the shared bus holds about a person — memory notes AND activity history.
- * The user's right to be forgotten. Returns how many docs were removed. Server-only (Admin).
+ * Erase everything the shared bus holds about a person — memory notes, activity history, AND the
+ * agent tasks keyed to them (in either direction). The user's right to be forgotten has to be
+ * COMPLETE: a note deleted but a task still naming the person's handle is a survivor of erasure.
+ * Tasks are matched by `handle` (the target identity), which covers both what was dispatched to
+ * this person's agent and what they dispatched. Returns how many docs were removed. Server-only.
  */
 export async function forgetShared(db: Firestore, handle: string): Promise<number> {
   if (!isValidHandle(handle)) return 0;
+  const key = contextKey(handle);
   let removed = 0;
-  for (const path of [BUS.memory(handle), BUS.activity(handle)]) {
-    const snap = await db.collection(path).get();
+  for (const snap of [
+    await db.collection(BUS.memory(handle)).get(),
+    await db.collection(BUS.activity(handle)).get(),
+    await db.collection(BUS.tasks).where('handle', '==', key).get(),
+  ]) {
     for (const d of snap.docs) {
       await d.ref.delete();
       removed += 1;
