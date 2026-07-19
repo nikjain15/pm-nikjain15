@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 // The smoke suite is read-only and runs against the DEPLOYED url — that's the checklist's
 // definition of done. The full suite CREATES accounts, projects and tasks, so it may only
 // ever run against the emulator.
-const DEPLOYED = 'https://pm-nikjain15.vercel.app';
+const DEPLOYED = 'https://pulsecohort.vercel.app';
 const BASE_URL = process.env.BASE_URL ?? DEPLOYED;
 
 /**

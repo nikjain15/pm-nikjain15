@@ -328,7 +328,7 @@ function ProductShot() {
         <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" aria-hidden />
         <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" aria-hidden />
         <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" aria-hidden />
-        <span className="ml-3 font-mono text-[11px] text-zinc-500">pm-nikjain15.vercel.app</span>
+        <span className="ml-3 font-mono text-[11px] text-zinc-500">pulsecohort.vercel.app</span>
       </div>
       {/* app header */}
       <div className="flex items-center gap-3 border-b border-zinc-800 px-5 py-3">

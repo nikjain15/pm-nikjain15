@@ -3,7 +3,7 @@
 **A reviewer will try to break this.** 64 of them, each with an agent, each looking for the thing
 that doesn't work. Assume adversarial use, not a happy path.
 
-Companion: [DESIGN-SPEC.md](DESIGN-SPEC.md) · [CHECKLIST.md](CHECKLIST.md) (definition of done).
+Companion: [DESIGN-SPEC.md](DESIGN-SPEC.md).
 
 ---
 
@@ -82,8 +82,8 @@ Cache by commit SHA range and **skip members with no new commits entirely**. Nev
 already narrated. A test that asserts "unchanged SHA range → zero model calls" (§1.3) is protecting
 the budget, not just correctness.
 
-⚠️ **This needs an API key with credits.** A $200/mo Claude Code subscription is not API credit —
-they're separate. The key goes in Vercel env vars, server-side only, **never** `NEXT_PUBLIC_*`.
+⚠️ **This needs an API key with credits.** A chat/subscription plan is not API credit — they're
+separate. The key goes in Vercel env vars, server-side only, **never** `NEXT_PUBLIC_*`.
 
 ### Test fixtures are not product seed data
 
@@ -221,7 +221,7 @@ Playwright viewports: **320 · 375 · 480 · 768 · 1024 · 1440**.
 3. npm run test:rules          # emulator
 4. npm run test:e2e:smoke      # deployed URL
 5. Re-run EVERY previously-passing checklist row  ← the regression bit
-6. Update CHECKLIST.md state in place (☐ → ✅)
+6. Update the definition-of-done tracker in place (☐ → ✅)
 ```
 
 **Rule: sensing must never break CRUD.** After every sensing change, re-run B4–B8 with GitHub
