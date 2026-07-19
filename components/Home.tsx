@@ -70,7 +70,9 @@ const MOTION_CSS = `
    still prominent) so it's never buried at the bottom on a phone. */
 .home-grid {
   display: grid;
-  gap: 2.5rem 2rem;
+  /* Stacked (mobile): generous row gap so the agent reads as its own block under the hero,
+     not crowded against it. */
+  gap: 2.75rem 2rem;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: 'hero' 'agent' 'updates' 'feed';
 }
@@ -80,10 +82,31 @@ const MOTION_CSS = `
 .home-feed { grid-area: feed; }
 @media (min-width: 1024px) {
   .home-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+    /* A wide gutter (4rem) so the agent rail is clearly separated from the content column
+       and easy to track as its own workspace. */
+    column-gap: 4rem;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
     grid-template-areas: 'hero agent' 'updates agent' 'feed agent';
   }
   .home-agent { position: sticky; top: 1.5rem; align-self: start; }
+  /* A hairline down the middle of the gutter so the eye can track exactly where the content
+     column ends and the agent begins. Fades at top and bottom so it never looks like a hard
+     table border. Anchored to the sticky agent element, sat in the -2rem gutter midpoint. */
+  .home-agent::before {
+    content: '';
+    position: absolute;
+    left: -2rem;
+    top: 0.25rem;
+    bottom: 0.25rem;
+    width: 1px;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(63 63 70 / 0.7) 12%,
+      rgb(63 63 70 / 0.7) 88%,
+      transparent
+    );
+  }
 }`;
 
 /* ----------------------------------------------------------------------- view */
