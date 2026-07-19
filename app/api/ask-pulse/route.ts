@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
-import { planActions, type HistoryTurn } from '@/lib/agent-plan';
-import type { BoardContext } from '@/lib/agent';
+import { planActions, type HistoryTurn, type SharedNote } from '@/lib/agent-plan';
+import type { AgentAction, BoardContext } from '@/lib/agent';
 import { evictExpired, hitRateLimit, type RateLimitState } from '@/lib/rate-limit';
+import { adminDb, busDb } from '@/lib/broker-admin';
+import { verifyUid, getHandle } from '@/lib/auth-server';
+import { logSharedActivity, readSharedMemory, rememberShared } from '@/lib/shared-context';
+
+// The bus reads/writes need the Admin SDK, so this route runs on the Node.js runtime. Everything
+// bus-related is additive and best-effort: with no ID token or no service-account key it is skipped
+// entirely and the route behaves exactly as it did before (the planner is unchanged).
+export const runtime = 'nodejs';
 
 /**
  * POST /api/ask-pulse — plan a user's request into own-board actions. design-agent.md §5.
@@ -74,7 +82,53 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await planActions(body.utterance, body.context, cleanHistory(body.history));
+  // --- shared cross-app memory (additive, best-effort) -------------------------------------
+  // Identity comes from the VERIFIED ID token, never the body. With no token or no admin key,
+  // handle/bus stay null and every bus step below is skipped — the planner runs exactly as before.
+  const uid = await verifyUid(request);
+  const adb = adminDb();
+  let handle: string | null = null;
+  const bus = busDb();
+  let sharedMemory: SharedNote[] = [];
+  if (uid && adb) {
+    handle = await getHandle(adb, uid);
+    if (handle && bus) {
+      const notes = await readSharedMemory(bus, handle, 15);
+      sharedMemory = notes.map((n) => ({ app: n.app, text: n.text }));
+    }
+  }
+
+  const result = await planActions(body.utterance, body.context, cleanHistory(body.history), sharedMemory);
+
+  // Durable "remember this" facts are written HERE, server-side, under the verified handle — the
+  // bus is Admin-only. They are always stripped from the returned plan so the client executor
+  // never sees them (it has no authority over the bus); if we couldn't write, we say so quietly.
+  if (result.actions.some((a) => a.kind === 'remember')) {
+    const kept: AgentAction[] = [];
+    let unsaved = 0;
+    for (const a of result.actions) {
+      if (a.kind === 'remember') {
+        if (handle && bus) await rememberShared(bus, handle, a.text, Date.now());
+        else unsaved += 1;
+      } else {
+        kept.push(a);
+      }
+    }
+    result.actions = kept;
+    if (unsaved > 0) {
+      result.dropped = [...(result.dropped ?? []), 'a memory to save — sign in to use shared memory'];
+    }
+  }
+
+  // A concise activity summary (never the raw transcript — data minimization) when something
+  // happened, so the shared history reflects Pulse's part of the user's week.
+  if (handle && bus && (result.actions.length > 0 || result.answer)) {
+    const summary = result.answer
+      ? `answered: ${result.answer}`
+      : `did on the board: ${result.actions.map((a) => a.kind).join(', ')}`;
+    await logSharedActivity(bus, handle, 'agent', summary, Date.now());
+  }
+
   // 200 on every planning path: an empty plan with a reason is an outcome the UI states
   // calmly, not an error.
   return NextResponse.json(result);

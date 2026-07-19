@@ -167,6 +167,95 @@ describe('boardContext — only the user own items, no peers, no timestamps', ()
   it('excludes archived projects', () => {
     expect(boardContext('me', tasks, projects).projects.map((p) => p.id)).toEqual(['p1']);
   });
+
+  it('carries per-task due date, stuck flag, and project name so follow-ups need no re-ask', async () => {
+    const { Timestamp } = await import('firebase/firestore');
+    const enriched: Task[] = [
+      {
+        id: 'd',
+        title: 'Due and stuck',
+        status: 'in_progress',
+        creatorUid: 'me',
+        assigneeUid: 'me',
+        ...base,
+        dueDate: Timestamp.fromDate(new Date('2026-08-01T00:00:00Z')),
+        stuckSince: Timestamp.fromDate(new Date('2026-07-10T00:00:00Z')),
+      },
+    ];
+    const [t] = boardContext('me', enriched, projects).tasks;
+    expect(t.dueDate).toBe('2026-08-01');
+    expect(t.stuck).toBe(true);
+    expect(t.project).toBe('Live');
+  });
+});
+
+describe('set_workflow — the private, always-available board switch', () => {
+  it('is offered to every user, opted-in or not (self-only, no publish risk)', async () => {
+    const { agentTools } = await import('@/lib/agent');
+    expect(agentTools(false).map((t) => t.name)).toContain('set_workflow');
+    expect(agentTools(true).map((t) => t.name)).toContain('set_workflow');
+  });
+
+  it('resolves a spoken workflow name to a known preset id', () => {
+    const { actions, dropped } = validatePlan(
+      [{ name: 'set_workflow', input: { workflow: 'Software delivery' } }],
+      ctx
+    );
+    expect(dropped).toEqual([]);
+    expect(actions).toEqual([{ kind: 'set_workflow', preset: 'software', label: 'Software delivery' }]);
+  });
+
+  it('drops a switch to an unknown workflow (an injected "switch to X" picks nothing)', () => {
+    const { actions, dropped } = validatePlan(
+      [{ name: 'set_workflow', input: { workflow: 'delete everything' } }],
+      ctx
+    );
+    expect(actions).toEqual([]);
+    expect(dropped.length).toBe(1);
+  });
+});
+
+describe('propose_dispatch — the cross-app hand-off (proposal only)', () => {
+  it('is offered to every user (self-only request, gated by the confirm step)', async () => {
+    const { agentTools } = await import('@/lib/agent');
+    expect(agentTools(false).map((t) => t.name)).toContain('propose_dispatch');
+    expect(agentTools(true).map((t) => t.name)).toContain('propose_dispatch');
+  });
+
+  it('validates a hand-off to another app, lowercasing the target', () => {
+    const { actions, dropped } = validatePlan(
+      [{ name: 'propose_dispatch', input: { app: 'Rally', intent: 'award a teammate a point' } }],
+      ctx
+    );
+    expect(dropped).toEqual([]);
+    expect(actions).toEqual([{ kind: 'dispatch', toApp: 'rally', intent: 'award a teammate a point' }]);
+  });
+
+  it('drops a hand-off to Pulse itself, or with an empty target/intent', () => {
+    expect(validatePlan([{ name: 'propose_dispatch', input: { app: 'pulse', intent: 'x' } }], ctx).actions).toEqual([]);
+    expect(validatePlan([{ name: 'propose_dispatch', input: { app: '', intent: 'x' } }], ctx).actions).toEqual([]);
+    expect(validatePlan([{ name: 'propose_dispatch', input: { app: 'rally', intent: '' } }], ctx).actions).toEqual([]);
+  });
+});
+
+describe('remember — durable shared cross-app memory', () => {
+  it('is offered to every user (their own memory about themselves)', async () => {
+    const { agentTools } = await import('@/lib/agent');
+    expect(agentTools(false).map((t) => t.name)).toContain('remember');
+  });
+
+  it('validates and bounds a fact to remember', () => {
+    const { actions, dropped } = validatePlan(
+      [{ name: 'remember', input: { text: '  working on the auth flow  ' } }],
+      ctx
+    );
+    expect(dropped).toEqual([]);
+    expect(actions).toEqual([{ kind: 'remember', text: 'working on the auth flow' }]);
+  });
+
+  it('drops an empty memory', () => {
+    expect(validatePlan([{ name: 'remember', input: { text: '   ' } }], ctx).actions).toEqual([]);
+  });
 });
 
 describe('answer mode — Pulse can reply, not only act', () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAskPulse } from '@/lib/use-ask-pulse';
+import { pollInbox, sendDispatch } from '@/lib/shared-context-client';
 import { appendTurn, subscribeToThread, type Turn } from '@/lib/ask-thread';
 import type { ExtractionResult } from '@/app/api/extract-recipe/route';
 import { RecipeModal, type RecipeDraft } from '@/components/RecipeModal';
@@ -41,13 +42,27 @@ export function AskPulse({
 }) {
   const [pendingRecipe, setPendingRecipe] = useState<{ taskId: string; title: string } | null>(null);
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null);
+  // A cross-app hand-off the agent proposed — held here until the user confirms; it NEVER sends
+  // on its own (the model has no authority; the user confirms every cross-app send).
+  const [pendingDispatch, setPendingDispatch] = useState<{ toApp: string; intent: string } | null>(null);
+  const [dispatchNote, setDispatchNote] = useState<string | null>(null);
   const { phase, steps, note, answer, run, undoStep } = useAskPulse({
     actor,
     tasks,
     projects,
     canPublish,
     onDraftRecipe: (taskId, title) => setPendingRecipe({ taskId, title }),
+    onProposeDispatch: (toApp, intent) => {
+      setDispatchNote(null);
+      setPendingDispatch({ toApp, intent });
+    },
   });
+
+  // Poll Pulse's inbox once when the panel opens: run any cross-app requests another app addressed
+  // to Pulse for this user. Best-effort and silent — inert until the shared bus is configured.
+  useEffect(() => {
+    void pollInbox();
+  }, []);
   const [text, setText] = useState('');
 
   // The persisted transcript — the agent's memory, yours alone (firestore.rules).
@@ -161,6 +176,40 @@ export function AskPulse({
           <span className="flex-1" />
           <span className="text-xs text-zinc-600">remembers your context</span>
         </div>
+
+        {/* A proposed cross-app hand-off, waiting on the user. Sending it is the user's call —
+            Pulse drafts, the user confirms (the same posture as everywhere else in the product). */}
+        {pendingDispatch && (
+          <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/60 px-4 py-2 text-xs">
+            <span className="text-zinc-300">
+              Ask {pendingDispatch.toApp}: “{pendingDispatch.intent}”?
+            </span>
+            <span className="flex-1" />
+            <button
+              onClick={async () => {
+                const { toApp, intent } = pendingDispatch;
+                setPendingDispatch(null);
+                const res = await sendDispatch(toApp, intent);
+                setDispatchNote(res.ok ? `Sent to ${toApp}.` : `Couldn’t reach ${toApp} right now.`);
+              }}
+              className="rounded-md border border-emerald-600/50 px-2 py-1 text-emerald-300 transition-colors hover:bg-emerald-600/10"
+            >
+              Send
+            </button>
+            <button
+              onClick={() => {
+                setPendingDispatch(null);
+                setDispatchNote('Left it here.');
+              }}
+              className="rounded-md border border-zinc-700 px-2 py-1 text-zinc-400 transition-colors hover:text-zinc-300"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+        {dispatchNote && !pendingDispatch && (
+          <div className="border-b border-zinc-800 px-4 py-2 text-xs text-zinc-500">{dispatchNote}</div>
+        )}
 
         {/* The transcript — persisted history, then the live current turn. */}
         <div className="flex max-h-[62vh] min-h-[200px] flex-col gap-4 overflow-y-auto px-4 py-4">

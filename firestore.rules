@@ -86,6 +86,15 @@ service cloud.firestore {
       allow read, write: if isSelf(uid);
     }
 
+    // --- boardViews ----------------------------------------------------------
+    // A member's private workflow lens (lib/board-view.ts): the lanes they chose and where
+    // each card sits within them. A lane is a private view, never a fact about the card — the
+    // shared truth is the task's canonical status. So like githubLinks/briefs this doc is
+    // yours ALONE: no peer may read which lanes you use or write into your placements.
+    match /boardViews/{uid} {
+      allow read, write: if isSelf(uid);
+    }
+
     // --- askThreads ----------------------------------------------------------
     // The Ask Pulse agent's transcript — your commands and Pulse's replies, so the panel
     // remembers your context across visits (lib/ask-thread.ts). It can quote your own tasks

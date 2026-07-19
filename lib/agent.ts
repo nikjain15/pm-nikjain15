@@ -1,4 +1,5 @@
 import type { Status, Task, Project } from './types';
+import { findPreset, WORKFLOW_PRESETS } from './workflows';
 
 /**
  * "Ask Pulse" — the agent contract and its load-bearing guard. See design-agent.md.
@@ -33,14 +34,42 @@ export type AgentAction =
   // write anything on its own — it opens the recipe draft for the user to edit and confirm,
   // behind the peer-name gate. Gated twice: the tool is only offered when the user opted in
   // (canPublish), and validatePlan drops it otherwise.
-  | { kind: 'draft_recipe'; taskId: string; title: string };
+  | { kind: 'draft_recipe'; taskId: string; title: string }
+  // Switch the user's OWN private board workflow to a pre-built preset (lib/workflows.ts). It
+  // adds no new status and touches nothing shared — it re-labels the user's own board into
+  // named lanes over the same three canonical statuses. `preset` is a validated preset id.
+  | { kind: 'set_workflow'; preset: string; label: string }
+  // Hand a task to ANOTHER cohort app's agent (e.g. ask Rally's agent to do something) over the
+  // shared context bus. This is a PROPOSAL — it never sends on its own; the user confirms first
+  // (design: the model has no authority, the user confirms every cross-app send). `toApp` is a
+  // lowercased app id that is not Pulse itself.
+  | { kind: 'dispatch'; toApp: string; intent: string }
+  // Save a durable fact to the user's OWN shared cross-app memory (Rally + Pulse both read it),
+  // when the user asks Pulse to remember something. The WRITE happens server-side in the route,
+  // under the verified handle — the bus is Admin-only. `text` is the fact, bounded.
+  | { kind: 'remember'; text: string };
 
 /** What the model may reference — the user's OWN board, nothing else. Built server-side from
  * the caller's own tasks/projects so the model can resolve "the login task" to a real id it
  * is allowed to touch. Never includes peers, never includes activity timestamps. */
 export type BoardContext = {
   uid: string;
-  tasks: { id: string; title: string; status: Status; mine: boolean }[];
+  tasks: {
+    id: string;
+    title: string;
+    status: Status;
+    mine: boolean;
+    /** ISO due date (YYYY-MM-DD) if the card has one — so the agent can answer "what's due
+     *  this week?" or "am I behind?" without re-asking. Optional so older callers/tests that
+     *  built a bare context still typecheck. */
+    dueDate?: string | null;
+    /** The user's own "I'm stuck" flag on their own card. Self-only data surfaced to the
+     *  user's own agent (it has a mark_stuck tool already); never a cohort surface. */
+    stuck?: boolean;
+    /** The name of the project the card is filed under, so "the task under Marketing" and
+     *  "what's left in Docs?" resolve without another round-trip. */
+    project?: string;
+  }[];
   projects: { id: string; name: string }[];
   /** Whether the user opted the agent into publishing (drafting recipes). Default false. */
   canPublish: boolean;
@@ -136,6 +165,53 @@ export const AGENT_TOOLS = [
   },
 ] as const;
 
+/** Switch the user's own private board workflow to a pre-built journey. Always available — it
+ *  touches only the user's own view and adds no status, so it carries none of the publish or
+ *  cross-member risk. validatePlan resolves the spoken name to a known preset and drops it if
+ *  it matches nothing (an injected "switch to X" can only ever pick from this fixed list). */
+export const SET_WORKFLOW_TOOL = {
+  name: 'set_workflow',
+  description: `Switch the user's own board to a pre-built workflow of named lanes over the same three statuses (to do / in progress / done). Use when they ask to change how their board is organised — "use the software workflow", "give me a content pipeline", "back to the classic board". Available workflows: ${WORKFLOW_PRESETS.map(
+    (p) => `${p.name} (${p.blurb})`
+  ).join('; ')}.`,
+  input_schema: {
+    type: 'object',
+    properties: { workflow: { type: 'string', description: 'The name of one of the available workflows.' } },
+    required: ['workflow'],
+  },
+} as const;
+
+/** Hand a task to ANOTHER app's agent in the cohort suite (e.g. ask Rally's agent to do something
+ *  Rally owns). A PROPOSAL only: the user confirms before Pulse sends it on the shared bus. Always
+ *  offered — it carries the user's OWN request to an app the user controls, and the confirm step is
+ *  the gate. validatePlan drops a dispatch to Pulse itself or with an empty target/intent. */
+export const DISPATCH_TOOL = {
+  name: 'propose_dispatch',
+  description:
+    "Hand a task to ANOTHER app's agent in the cohort suite — e.g. ask Rally's agent to do something Rally owns (recognition, XP, the leaderboard). Use when the user asks for something another app owns, not Pulse's own board. The user confirms before it is sent.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      app: { type: 'string', description: 'The target app, e.g. "rally". Not "pulse".' },
+      intent: { type: 'string', description: "What you want that app's agent to do, in a short phrase." },
+    },
+    required: ['app', 'intent'],
+  },
+} as const;
+
+/** Save a durable fact to the user's shared cross-app memory. Always offered — it's the user's own
+ *  memory about themselves, written server-side under their verified handle. validatePlan bounds it. */
+export const REMEMBER_TOOL = {
+  name: 'remember',
+  description:
+    "Save a durable fact to the user's shared memory that every cohort app (Rally and Pulse) can see — use when the user says to remember something (\"remember I'm working on the auth flow\", \"note that I prefer short tasks\"). One short fact per call. Don't use it for one-off board actions; use the board tools for those.",
+  input_schema: {
+    type: 'object',
+    properties: { text: { type: 'string', description: 'The fact to remember, one short sentence.' } },
+    required: ['text'],
+  },
+} as const;
+
 /** The one publish tool. Offered to the model ONLY when the user opted in (`canPublish`);
  * validatePlan drops it otherwise, so it can never fire from a plan the user didn't enable. */
 export const DRAFT_RECIPE_TOOL = {
@@ -171,7 +247,7 @@ export const ANSWER_TOOL = {
 /** The tools handed to the model — the publish tool appears only for an opted-in user, and
  *  the read-only answer tool is always available (it can do no harm). */
 export function agentTools(canPublish: boolean) {
-  const base = [...AGENT_TOOLS, ANSWER_TOOL];
+  const base = [...AGENT_TOOLS, ANSWER_TOOL, SET_WORKFLOW_TOOL, DISPATCH_TOOL, REMEMBER_TOOL];
   return canPublish ? [...base, DRAFT_RECIPE_TOOL] : base;
 }
 
@@ -352,6 +428,41 @@ export function validatePlan(
       continue;
     }
 
+    if (call.name === 'set_workflow') {
+      const preset = findPreset(typeof input.workflow === 'string' ? input.workflow : '');
+      if (!preset) {
+        dropped.push(`a workflow switch to something that isn't a known workflow ("${input.workflow ?? ''}")`);
+        continue;
+      }
+      actions.push({ kind: 'set_workflow', preset: preset.id, label: preset.name });
+      continue;
+    }
+
+    if (call.name === 'propose_dispatch') {
+      const toApp = typeof input.app === 'string' ? input.app.trim().toLowerCase() : '';
+      const intent = typeof input.intent === 'string' ? input.intent.trim().slice(0, 500) : '';
+      if (!toApp || toApp === 'pulse') {
+        dropped.push(`a hand-off to no other app ("${input.app ?? ''}")`);
+        continue;
+      }
+      if (!intent) {
+        dropped.push('a hand-off with nothing to ask for');
+        continue;
+      }
+      actions.push({ kind: 'dispatch', toApp, intent });
+      continue;
+    }
+
+    if (call.name === 'remember') {
+      const text = typeof input.text === 'string' ? input.text.trim().slice(0, 280) : '';
+      if (!text) {
+        dropped.push('a memory with nothing to remember');
+        continue;
+      }
+      actions.push({ kind: 'remember', text });
+      continue;
+    }
+
     dropped.push(`an unknown action ("${call.name}")`);
   }
 
@@ -366,11 +477,24 @@ export function boardContext(
   projects: Project[],
   canPublish = false
 ): BoardContext {
+  // Resolve a card's project name from ALL projects (archived included) — a card can still
+  // belong to an archived project, and naming it is more useful than "unknown".
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
   return {
     uid,
     tasks: tasks
       .filter((t) => t.creatorUid === uid || t.assigneeUid === uid)
-      .map((t) => ({ id: t.id, title: t.title, status: t.status, mine: true })),
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        mine: true,
+        // Timestamp → plain ISO date. A due date is a fact about the user's own card, not an
+        // absence signal, so carrying it breaks no rail.
+        dueDate: t.dueDate ? t.dueDate.toDate().toISOString().slice(0, 10) : null,
+        stuck: !!t.stuckSince,
+        project: projectName.get(t.projectId) ?? '',
+      })),
     projects: projects.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name })),
     canPublish,
   };

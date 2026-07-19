@@ -1,5 +1,6 @@
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getAuth, type Auth } from 'firebase-admin/auth';
 import { runBroker, introDocId, type BrokerRunResult } from './broker-job';
 import type { HelperKnowledge, StuckSignal } from './broker';
 
@@ -48,6 +49,39 @@ export function adminDb(): Firestore | null {
     }
   }
   return getFirestore();
+}
+
+/**
+ * Verify a Firebase ID token — the auth half of the same default Admin app. `auth-server.ts`
+ * gates every bus-touching route on this so the caller's handle is derived from a VERIFIED uid,
+ * never a body-supplied one (the bus writes with the Admin SDK, which bypasses client rules, so a
+ * spoofed identity there would read/write someone else's shared context). Null if not configured.
+ */
+export function adminAuth(): Auth | null {
+  return adminDb() ? getAuth() : null;
+}
+
+/**
+ * The shared cross-app "context bus" (see lib/shared-context-contract.ts). In production this is a
+ * dedicated Firebase project every cohort app writes to, selected by SHARED_FIREBASE_SERVICE_ACCOUNT
+ * as its OWN named Admin app ('bus') so it never collides with Pulse's default app. Until that env
+ * is set, the bus transparently falls back to Pulse's own database — the same degrade-don't-crash
+ * rule as everything else: shared context works within Pulse today and flips to the real cross-app
+ * bus the moment the key lands. Null only if no credential exists at all.
+ */
+export function busDb(): Firestore | null {
+  const svc = process.env.SHARED_FIREBASE_SERVICE_ACCOUNT;
+  if (svc) {
+    try {
+      const existing = getApps().find((a) => a.name === 'bus');
+      const app = existing ?? initializeApp({ credential: cert(JSON.parse(svc) as Parameters<typeof cert>[0]) }, 'bus');
+      return getFirestore(app);
+    } catch {
+      // A malformed shared key must not take the agent down — fall back to the primary db.
+      return adminDb();
+    }
+  }
+  return adminDb();
 }
 
 type MemberRow = { uid: string; displayName: string; photoURL: string | null; handle: string | null };

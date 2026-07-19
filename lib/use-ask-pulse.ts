@@ -3,6 +3,8 @@
 import { useCallback, useState } from 'react';
 import { Timestamp } from 'firebase/firestore';
 import { boardContext, type AgentAction } from './agent';
+import { auth } from './firebase';
+import { setWorkflowPreset } from './board-view';
 import { createProject, createTask, deleteTask, setTaskStatus, setTaskStuck, updateProject, updateTask } from './data';
 import type { Project, Task } from './types';
 
@@ -39,6 +41,7 @@ export function useAskPulse({
   projects,
   canPublish = false,
   onDraftRecipe,
+  onProposeDispatch,
 }: {
   actor: Actor;
   tasks: Task[];
@@ -47,6 +50,9 @@ export function useAskPulse({
   canPublish?: boolean;
   /** Called when the agent proposes drafting a recipe; the caller opens the recipe modal. */
   onDraftRecipe?: (taskId: string, title: string) => void;
+  /** Called when the agent proposes handing a task to another app's agent. It NEVER sends on its
+   *  own — the caller surfaces a confirm affordance and only then calls sendDispatch. */
+  onProposeDispatch?: (toApp: string, intent: string) => void;
 }) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [steps, setSteps] = useState<Step[]>([]);
@@ -70,9 +76,19 @@ export function useAskPulse({
 
       let actions: AgentAction[] = [];
       try {
+        // Attach the user's ID token so the route can read/write their shared cross-app memory
+        // under a VERIFIED identity. Best-effort — a missing token just skips the shared layer,
+        // and the planner behaves exactly as before.
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        try {
+          const token = await auth.currentUser?.getIdToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        } catch {
+          /* no token → shared memory just stays inert this turn */
+        }
         const res = await fetch('/api/ask-pulse', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             utterance,
             context: boardContext(actor.uid, tasks, projects, canPublish),
@@ -249,6 +265,31 @@ export function useAskPulse({
               state: 'done',
               undo: async () => void (await setTaskStuck(action.taskId, prior)),
             });
+          } else if (action.kind === 'remember') {
+            // Shared-memory writes happen server-side under the verified handle and are normally
+            // stripped from the plan before it reaches here. If one slips through (e.g. the server
+            // had no identity), surface it honestly rather than acting with authority we don't have.
+            add({ label: 'Noted for your shared memory', detail: null, state: 'done', undo: null });
+          } else if (action.kind === 'dispatch') {
+            // A cross-app hand-off is outward — it NEVER sends on its own. Surface it as a
+            // proposal the user confirms; the panel calls sendDispatch only on confirm.
+            add({
+              label: `Ready to ask ${action.toApp}: ${action.intent}`,
+              detail: 'confirm to send',
+              state: 'done',
+              undo: null,
+            });
+            onProposeDispatch?.(action.toApp, action.intent);
+          } else if (action.kind === 'set_workflow') {
+            // Switch the user's own private board workflow. Self-only, adds no status. Undo is
+            // one tap away in the picker, so the step carries none here.
+            const id = add({ label: `Switching your board to ${action.label}`, detail: null, state: 'running', undo: null });
+            const name = await setWorkflowPreset(actor.uid, action.preset);
+            settle(id, {
+              label: name ? `Switched your board to ${name}` : `Couldn't switch to ${action.label}`,
+              state: 'done',
+              undo: null,
+            });
           } else {
             // draft_recipe — the one action that does NOT write. It hands off to the recipe
             // modal, where the user edits the draft and confirms behind the peer-name gate.
@@ -263,7 +304,7 @@ export function useAskPulse({
       setPhase('done');
       return doneLabels.join(' · ') || 'Done.';
     },
-    [actor, tasks, projects, canPublish, onDraftRecipe]
+    [actor, tasks, projects, canPublish, onDraftRecipe, onProposeDispatch]
   );
 
   const undoStep = useCallback(
