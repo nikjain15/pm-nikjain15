@@ -253,8 +253,12 @@ export function Board({
                 ))}
 
                 {inLane.length === 0 && (
+                  // Reuse the classic board's on-voice invitations, keyed by the lane's canonical
+                  // status (VOICE: empty states invite; never the banned "nothing here").
                   <p className="py-6 text-center text-xs text-zinc-400">
-                    {lane.status === 'done' ? 'Ship something — it lands here by itself.' : 'Nothing here yet.'}
+                    {lane.status === 'todo' && 'Empty. Hit + and claim the first card.'}
+                    {lane.status === 'in_progress' && 'Nothing in flight. Yet.'}
+                    {lane.status === 'done' && 'Ship something — it lands here by itself.'}
                   </p>
                 )}
               </div>

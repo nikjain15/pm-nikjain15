@@ -21,7 +21,7 @@ export function WorkflowPicker({ uid, view }: { uid: string; view: BoardView | n
         value={current}
         onChange={(e) => void setWorkflowPreset(uid, e.target.value)}
         data-testid="workflow-picker"
-        className="rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-xs text-zinc-200"
+        className="min-h-[44px] rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-xs text-zinc-200"
       >
         {WORKFLOW_PRESETS.map((p) => (
           <option key={p.id} value={p.id} title={p.blurb}>

@@ -498,9 +498,23 @@ describe('members — A cannot become B', () => {
     await assertSucceeds(setDoc(doc(as(env, ALICE), `members/${ALICE}`), member(ALICE)));
   });
 
-  it('lets A update their own member doc', async () => {
+  it('lets A update a mutable field on their own member doc (e.g. photoURL)', async () => {
     await seed(env, `members/${ALICE}`, member(ALICE));
+    await assertSucceeds(updateDoc(doc(as(env, ALICE), `members/${ALICE}`), { photoURL: 'x' }));
+  });
+
+  it('lets A backfill a null handle once — the GitHub login arriving after the doc exists', async () => {
+    await seed(env, `members/${ALICE}`, member(ALICE, { handle: null }));
     await assertSucceeds(updateDoc(doc(as(env, ALICE), `members/${ALICE}`), { handle: 'gh_real' }));
+  });
+
+  it("denies repointing an ESTABLISHED handle — the cross-app bus key can't be stolen", async () => {
+    // The confirmed-critical exploit: set your handle to a victim's login, then the bus routes
+    // (which map your verified uid → members/{uid}.handle) act on the victim's shared context.
+    await seed(env, `members/${ALICE}`, member(ALICE, { handle: 'gh_alice' }));
+    await assertFails(
+      updateDoc(doc(as(env, ALICE), `members/${ALICE}`), { handle: 'gh_victim' })
+    );
   });
 
   it('lets a signed-in member read the cohort roster', async () => {

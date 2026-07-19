@@ -90,12 +90,19 @@ export async function POST(request: Request) {
   let handle: string | null = null;
   const bus = busDb();
   let sharedMemory: SharedNote[] = [];
-  if (uid && adb) {
-    handle = await getHandle(adb, uid);
-    if (handle && bus) {
-      const notes = await readSharedMemory(bus, handle, 15);
-      sharedMemory = notes.map((n) => ({ app: n.app, text: n.text }));
+  // Best-effort: a transient bus/Firestore error must never take the planner down. On any failure
+  // handle stays null and the plan runs exactly as it would with the shared layer off.
+  try {
+    if (uid && adb) {
+      handle = await getHandle(adb, uid);
+      if (handle && bus) {
+        const notes = await readSharedMemory(bus, handle, 15);
+        sharedMemory = notes.map((n) => ({ app: n.app, text: n.text }));
+      }
     }
+  } catch {
+    handle = null;
+    sharedMemory = [];
   }
 
   const result = await planActions(body.utterance, body.context, cleanHistory(body.history), sharedMemory);
@@ -108,8 +115,17 @@ export async function POST(request: Request) {
     let unsaved = 0;
     for (const a of result.actions) {
       if (a.kind === 'remember') {
-        if (handle && bus) await rememberShared(bus, handle, a.text, Date.now());
-        else unsaved += 1;
+        // Best-effort write; a bus failure is a quiet "couldn't save", never a crashed plan.
+        let saved = false;
+        if (handle && bus) {
+          try {
+            await rememberShared(bus, handle, a.text, Date.now());
+            saved = true;
+          } catch {
+            saved = false;
+          }
+        }
+        if (!saved) unsaved += 1;
       } else {
         kept.push(a);
       }
@@ -126,7 +142,11 @@ export async function POST(request: Request) {
     const summary = result.answer
       ? `answered: ${result.answer}`
       : `did on the board: ${result.actions.map((a) => a.kind).join(', ')}`;
-    await logSharedActivity(bus, handle, 'agent', summary, Date.now());
+    try {
+      await logSharedActivity(bus, handle, 'agent', summary, Date.now());
+    } catch {
+      /* activity logging is a best-effort courtesy — never fail the plan over it */
+    }
   }
 
   // 200 on every planning path: an empty plan with a reason is an outcome the UI states

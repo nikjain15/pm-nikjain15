@@ -32,7 +32,13 @@ import type { HelperKnowledge, StuckSignal } from './broker';
 export const AGING_WIP_HOURS = 48;
 
 export function adminDb(): Firestore | null {
-  if (getApps().length === 0) {
+  // Check for the DEFAULT app specifically, not `getApps().length`. busDb() may have created the
+  // named 'bus' app (when SHARED_FIREBASE_SERVICE_ACCOUNT is set), which makes getApps() non-empty
+  // even though Pulse's own default app was never initialized. Keying on length then skipped the
+  // init and called getFirestore() on a missing default app — throwing, so every bus route 500'd
+  // instead of degrading to 503, exactly when SHARED is set but FIREBASE_SERVICE_ACCOUNT is not.
+  const hasDefault = getApps().some((a) => a.name === '[DEFAULT]');
+  if (!hasDefault) {
     const svc = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (svc) {
       try {

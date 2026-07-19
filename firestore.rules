@@ -53,7 +53,17 @@ service cloud.firestore {
     match /members/{uid} {
       allow read: if signedIn();
       allow create: if isSelf(uid) && request.resource.data.uid == uid;
-      allow update: if isSelf(uid) && request.resource.data.uid == resource.data.uid;
+      // `handle` is the cross-app identity key: every bus route maps the verified uid to
+      // `members/{uid}.handle` and trusts it (the bus writes with the rule-exempt Admin SDK).
+      // It is set exactly once — null at create, then backfilled to the GitHub login when the
+      // OAuth identity arrives (auth-context.tsx ensureMember). After that it is FROZEN: a client
+      // must never repoint an established member's handle to a victim's, which would let them
+      // read, forge tasks under, or erase the victim's cross-app context. Settable from null,
+      // immutable thereafter.
+      allow update: if isSelf(uid)
+                    && request.resource.data.uid == resource.data.uid
+                    && (resource.data.handle == null
+                        || request.resource.data.handle == resource.data.handle);
       allow delete: if false;
     }
 

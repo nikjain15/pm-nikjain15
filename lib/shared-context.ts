@@ -97,9 +97,17 @@ export async function dispatchTask(
  * targets, so it must act on the right identity's data.
  */
 export async function claimTasks(db: Firestore, toApp = APP, handle: string | null = null, limit = 10): Promise<AgentTask[]> {
-  const snap = await db.collection(BUS.tasks).where('toApp', '==', toApp).where('status', '==', 'pending').limit(limit * 2).get();
+  // Filter by handle IN THE QUERY (not client-side over a fixed window). The old code fetched an
+  // unordered limit(limit*2) page and filtered by handle after the fact: if that page happened to
+  // be full of OTHER handles' pending tasks, the target user's tasks were never in it and starved
+  // forever. Pushing the handle equality into the query — and ordering by createdAt so the oldest
+  // pending task is always claimed first — makes claiming fair and starvation-free. (Kept identical
+  // to Rally's adapter — see the contract-drift guard.)
   const key = handle ? contextKey(handle) : null;
-  const candidates = key ? snap.docs.filter((d) => (d.data().handle as string) === key) : snap.docs;
+  let q = db.collection(BUS.tasks).where('toApp', '==', toApp).where('status', '==', 'pending');
+  if (key) q = q.where('handle', '==', key);
+  const snap = await q.orderBy('createdAt', 'asc').limit(limit).get();
+  const candidates = snap.docs;
   const claimed: AgentTask[] = [];
   for (const doc of candidates.slice(0, limit)) {
     const ok = await db.runTransaction(async (tx) => {
