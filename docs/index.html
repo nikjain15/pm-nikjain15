@@ -57,6 +57,21 @@
   .tagline { color: var(--em); font-weight: 600; }
 
   /* the product mock */
+  /* demo video */
+  .demo { position: relative; margin: 40px 0 0; border: 1px solid var(--line); border-radius: 16px;
+    background: #000; overflow: hidden; box-shadow: 0 40px 120px rgba(0,0,0,0.5); aspect-ratio: 16 / 9; }
+  .demo-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .demo-video[hidden] { display: none; }
+  .demo-play { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 9px; cursor: pointer;
+    font: 500 14px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--fg); padding: 11px 20px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(9,9,11,0.6); backdrop-filter: blur(8px); transition: .15s; }
+  .demo-play:hover { border-color: var(--em); background: rgba(9,9,11,0.82); }
+  .demo-play-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--em);
+    box-shadow: 0 0 0 4px rgba(52,211,153,0.18); }
+  .demo-cap { text-align: center; color: var(--dim); margin: 16px 0 0; font-size: 15px; }
+  @media (max-width: 620px) { .demo-play { font-size: 13px; padding: 9px 15px; bottom: 14px; } }
   .mock { margin-top: 64px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg2); overflow: hidden; }
   .mock-top { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   .mock-top .d { width: 11px; height: 11px; border-radius: 50%; background: #3f3f46; }
@@ -214,6 +229,28 @@
   </div>
 </section>
 
+<section id="see" style="padding-top:0">
+  <div class="wrap">
+    <p class="eyebrow reveal">See it work</p>
+    <h2 class="reveal">Watch Pulse move a card the moment you ship</h2>
+    <p class="sub reveal">A merged pull request, an answer from the agent, your own private workflow, one shared brain across your tools — in about a minute. Nobody narrates it. The board just keeps itself current.</p>
+    <figure class="demo reveal">
+      <video id="heroVideo" class="demo-video" autoplay muted loop playsinline preload="metadata"
+             poster="media/pulse-hero.jpg" aria-label="Pulse demo — a merged pull request moves a card to Done on its own.">
+        <source src="media/pulse-hero.mp4" type="video/mp4" />
+      </video>
+      <video id="fullVideo" class="demo-video" controls playsinline preload="none"
+             poster="media/pulse-hero.jpg" hidden aria-label="Pulse — full demo with sound.">
+        <source src="media/pulse-demo.mp4" type="video/mp4" />
+      </video>
+      <button id="playFull" class="demo-play" type="button" aria-label="Play the full demo with sound">
+        <span class="demo-play-dot"></span> Watch the full version with sound
+      </button>
+    </figure>
+    <figcaption class="demo-cap voice reveal">the board that updates itself</figcaption>
+  </div>
+</section>
+
 <section id="use">
   <div class="wrap">
     <p class="eyebrow reveal">Use it for your own project</p>
@@ -271,6 +308,25 @@
     <a href="https://github.com/nikjain15/pulse" target="_blank" rel="noopener">GitHub</a>
   </div>
 </footer>
+
+<script>
+  // Swap the muted autoplay loop for the full demo with sound on request.
+  (function () {
+    var btn = document.getElementById('playFull');
+    var hero = document.getElementById('heroVideo');
+    var full = document.getElementById('fullVideo');
+    if (!btn || !hero || !full) return;
+    btn.addEventListener('click', function () {
+      try { hero.pause(); } catch (e) {}
+      hero.hidden = true;
+      btn.hidden = true;
+      full.hidden = false;
+      full.muted = false;
+      var p = full.play();
+      if (p && p.catch) p.catch(function () { full.controls = true; });
+    });
+  })();
+</script>
 
 </body>
 </html>
